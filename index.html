@@ -1,0 +1,28 @@
+<!doctype html>
+<html lang="zh-CN"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover"><meta http-equiv="Content-Security-Policy" content="default-src 'none'; script-src 'self'; style-src 'self' 'unsafe-inline'; img-src 'self' data:; connect-src 'self'; manifest-src 'self'; worker-src 'self'; object-src 'none'; base-uri 'none'; form-action 'none'"><meta name="theme-color" content="#233f76"><meta name="apple-mobile-web-app-capable" content="yes"><meta name="mobile-web-app-capable" content="yes"><meta name="apple-mobile-web-app-status-bar-style" content="black-translucent"><link rel="apple-touch-icon" href="./touch-icon.png"><link rel="icon" href="./icon-192.png"><link rel="manifest" href="./manifest.webmanifest"><title>人事台账</title><link rel="stylesheet" href="app.css"><link rel="stylesheet" href="people.css"><link rel="stylesheet" href="policy.css"><link rel="stylesheet" href="iphone.css"></head><body>
+<header class="mast"><div class="mast-inner"><div class="brand"><i data-icon="book"></i>人事台账</div><button id="storage" class="storage"><i data-icon="device"></i><span>本机数据</span></button></div></header>
+<aside id="install-hint" aria-label="安装与离线状态">
+  <details id="install-details">
+    <summary><strong id="guide-title">添加到 iPhone 主屏幕</strong><span id="install-status" role="status" aria-live="polite">正在准备…</span></summary>
+    <div id="guide-body">
+      <div id="inapp-guide" hidden>
+        <h2 id="inapp-title">先用 Safari 打开</h2>
+        <p id="inapp-copy"></p>
+        <button type="button" class="guide-button" id="copy-install-url">复制网址</button>
+        <input id="copy-field" aria-label="安装网址，按住可复制" readonly hidden>
+      </div>
+      <ol class="phone-steps" id="safari-guide">
+        <li><span class="step-symbol"><svg viewBox="0 0 28 30" aria-hidden="true"><path d="M8 10H5v16h18V10h-3M14 18V2m-5.5 5.5L14 2l5.5 5.5"/></svg></span><div><strong>1. 点 Safari 的分享按钮</strong><p>找方框向上箭头。如果工具栏只有“···”，先点它，再点“分享”。</p></div></li>
+        <li><span class="step-symbol"><svg viewBox="0 0 28 30" aria-hidden="true"><rect x="3.5" y="4" width="21" height="21" rx="4"/><path d="M14 9v11m-5.5-5.5h11"/></svg></span><div><strong>2. 选“添加到主屏幕”</strong><p>向上滑动菜单找到这一项。如果有“作为网页 App 打开”开关，将它打开，然后点“添加”。</p></div></li>
+        <li><img class="step-app" src="./touch-icon.png" alt=""><div><strong>3. 回桌面点“人事台账”</strong><p>首次打开时保持联网。看到“可离线使用”，就能断网录入了。</p></div></li>
+      </ol>
+      <p id="install-help" hidden></p>
+      <button id="retry-offline" type="button" class="guide-button" hidden>重新准备</button>
+    </div>
+  </details>
+</aside>
+<input id="backup-input" type="file" accept=".json,application/json,text/plain" hidden>
+<main id="content" tabindex="-1"></main>
+<nav id="nav" aria-label="主导航"></nav><div id="toast" role="status" aria-live="polite"></div>
+<script src="policy.js"></script><script src="core.js"></script><script src="people.js"></script><script src="iphone.js"></script><script src="app.js"></script>
+</body></html>

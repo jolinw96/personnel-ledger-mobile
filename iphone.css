@@ -1,0 +1,26 @@
+.mast{padding-top:env(safe-area-inset-top,0px)}
+body{padding-left:env(safe-area-inset-left,0px);padding-right:env(safe-area-inset-right,0px)}
+#install-hint{background:#eaf1f9;color:#233f76;border-bottom:1px solid #cfdaea}
+#install-details{max-width:800px;margin:0 auto;padding:0 16px}
+#install-details>summary{cursor:pointer;padding:11px 0;min-height:42px;font-size:15px}
+#guide-title{font-weight:650;margin-right:.7em}
+#install-status{font-size:12px;color:#465f7e}
+#install-hint[data-ready=true] #install-status{color:#11645d}
+#guide-body{padding:0 0 14px}
+#install-hint [hidden]{display:none!important}
+.phone-steps{list-style:none;padding:0;margin:0;display:grid;gap:0;border:1px solid #d6e1ef;background:#fff;border-radius:10px;overflow:hidden}
+.phone-steps li{display:flex;align-items:flex-start;gap:13px;padding:10px 12px}
+.phone-steps li+li{border-top:1px solid #e2e9f0}
+.phone-steps strong,#inapp-title{font-size:16px;line-height:1.4;color:#18365c}
+.phone-steps p,#inapp-copy,#install-help{margin:.16em 0 0;line-height:1.5;font-size:14px;color:#43556b}
+.step-symbol,.step-app{width:34px;height:34px;flex:0 0 34px;border-radius:7px}
+.step-symbol{display:grid;place-items:center;color:#24548f;background:#edf3fb}
+.step-symbol svg{width:25px;height:25px;fill:none;stroke:currentColor;stroke-width:1.8;stroke-linecap:round;stroke-linejoin:round}
+#inapp-guide{background:#fff;padding:12px;border-radius:8px}
+#inapp-copy{margin:4px 0 8px}
+.guide-button{min-height:40px;background:#fff;border:1px solid #92a9c5;border-radius:6px;color:#233f76;padding:6px 12px}
+#copy-field{display:block;margin-top:6px;width:100%;padding:8px}
+#install-help:not([hidden]),#retry-offline:not([hidden]){margin-top:9px}
+.home-mode #install-details>summary{padding:4px 0;min-height:28px;font-size:12px}
+@media(min-width:650px){#install-details{padding:0 24px}}
+@media(max-width:600px){input:not([type=checkbox]):not([type=radio]),select,textarea{font-size:16px}}
