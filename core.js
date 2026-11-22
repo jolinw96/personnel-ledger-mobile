@@ -6,6 +6,17 @@
   const esc = str => String(str==null?"":str).replace(/[&<>"']/g,c=>({"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;","'":"&#39;"}[c]));
   const iso = d => [d.getFullYear(),String(d.getMonth()+1).padStart(2,"0"),String(d.getDate()).padStart(2,"0")].join("-");
   const today = () => iso(new Date());
+  const jobTitles = {
+    position:["科长","副科长"],
+    rank:["三级调研员","四级调研员","一级主任科员","二级主任科员","三级主任科员","四级主任科员","一级科员","七级职员","八级职员","九级职员"]
+  };
+  function jobChoices(kind,previous){
+    const titles = kind==="target" ? [...jobTitles.position,...jobTitles.rank] : jobTitles[kind] || [];
+    const pairs = titles.map(title=>[title,title]);
+    if(previous && !titles.includes(previous))pairs.push([previous,previous+"（原记录）"]);
+    return pairs;
+  }
+  const isMonth = value => typeof value==="string" && /^[0-9]{4}-(0[1-9]|1[0-2])$/.test(value);
   const icons = {
     book:'<path d="M4 4.5h6c1.2 0 2 .8 2 2 0-1.2.8-2 2-2h6v14h-6c-1.2 0-2 .8-2 1.5 0-.7-.8-1.5-2-1.5H4z"/><path d="M12 6.5V20"/>',
     device:'<rect x="6" y="2.5" width="12" height="19" rx="2.5"/><path d="M10 18h4"/>',
@@ -34,6 +45,7 @@
     const parents=new Map();
     for(const d of data.depts){
       if(typeof d.name!=="string"||!d.name.trim()||!flat(d,["parentId"]))bad();
+      if(d.quota!=null&&(!Number.isSafeInteger(d.quota)||d.quota<0))bad();
       parents.set(String(d.id),String(d.parentId||""));
     }
     const resolved=new Set();
@@ -51,11 +63,13 @@
       if(p.deptId==="" ? !!p.deptSince : !idOK(p.deptId)||!parents.has(String(p.deptId)))bad();
       if(p.deptHistory!=null&&(!Array.isArray(p.deptHistory)||!p.deptHistory.every(h=>h&&typeof h.name==="string"&&h.name.trim()&&isDate(h.start)&&!!h.end&&isDate(h.end))))bad();
       if(["gender","education","category","rank","position"].some(k=>p[k]!=null&&typeof p[k]!=="string"))bad();
-      if(["birth","ageAsOf","deptSince","rankSince","positionSince"].some(k=>!isDate(p[k])))bad();
+      if(!isMonth(p.birth)&&!isDate(p.birth))bad();
+      if(["ageAsOf","deptSince","rankSince","positionSince"].some(k=>!isDate(p[k])))bad();
       if(p.age!=null&&p.age!==""&&(!Number.isInteger(Number(p.age))||+p.age<0||+p.age>130))bad();
       if(p.history!=null && (!Array.isArray(p.history)||!p.history.every(h=>h&&typeof h==="object"&&typeof h.title==="string"&&typeof h.type==="string"&&isDate(h.start)&&isDate(h.end))))bad();
     }
     if(typeof window.validatePolicies==="function"&&!window.validatePolicies(data.policies))bad();
+    for(const p of data.people)if(p.birth)p.birth=p.birth.slice(0,7);
     return data;
   }
   let state=initial(), unreadable=false;
@@ -89,7 +103,8 @@
     age:(p,date=today())=>{
       if(!p.birth)return p.age==null||p.age===""?null:Number(p.age);
       const when=typeof date==="string"?date:iso(date);
-      const n=Number(when.slice(0,4))-Number(p.birth.slice(0,4))-(when.slice(5)<p.birth.slice(5)?1:0);
+      const n=Number(when.slice(0,4))-Number(p.birth.slice(0,4))-(when.slice(5,7)<p.birth.slice(5,7)?1:0);
       return Number.isFinite(n)&&n>=0?n:null;
     },isUnreadable:()=>unreadable, raw:()=>localStorage.getItem(key)};
+  Object.assign(HR,{jobTitles,jobChoices,isMonth});
 })();

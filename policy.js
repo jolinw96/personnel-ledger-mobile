@@ -126,14 +126,15 @@
       if (clauses.length===2 && /或|且|并|须|需|考核|名额|除外|前提|仅限|限于|条件|以上|以下/.test(clauses[1])) {unknown.push(line);continue;}
       const clause=clauses[0];
       m=/^(任现职级|任现职务|到科室|在本科室任职)(?:时间)?(?:已满|满|至少|不少于)([\d零一二三四五六七八九十两]+)(年|个月)$/.exec(clause);
-      const named = !m && /^任([\u3400-\u9fff]{1,18}(?:主任科员|调研员|巡视员|科员))满([\d一二三四五六七八九十两]+)(年|个月)$/.exec(clause);
+      const named = !m && /^任(科长|副科长|[\u3400-\u9fff]{1,18}(?:主任科员|调研员|巡视员|科员|职员))满([\d一二三四五六七八九十两]+)(年|个月)$/.exec(clause);
       if (!m && !named) {unknown.push(line);continue;}
       const match=m||named;
       if (named && /或|且|不|非|累计|以上|以下|兼任|曾任/.test(named[1])) {unknown.push(line);continue;}
       const months=number(match[2])*(match[3]==='年'?12:1);
       if (!Number.isInteger(months)||months<=0||months>1200) {unknown.push(line);continue;}
-      const key = named?'rankMonths':({'任现职级':'rankMonths','任现职务':'positionMonths','到科室':'deptMonths','在本科室任职':'deptMonths'}[match[1]]);
-      if (named) put('rank',named[1],line);
+      const namedField=named&&['科长','副科长'].includes(named[1])?'position':'rank';
+      const key = named?namedField+'Months':({'任现职级':'rankMonths','任现职务':'positionMonths','到科室':'deptMonths','在本科室任职':'deptMonths'}[match[1]]);
+      if (named) put(namedField,named[1],line);
       put(key,months,line);
       if (clauses.length===2) put('target',clauses[1].replace(/^(?:可晋升(?:为)?|可晋任)/,''),line);
     }
@@ -229,15 +230,20 @@
     }
     onLeave=()=>{if(clean()===baseline) home();else ask('当前规则有未保存的修改，确定放弃吗？',home,'放弃修改');};
     const educationOptions=levels.map(v=>'<option>'+v+'</option>').join('');
-    const datalists=Object.keys(exact).map(k=>'<datalist id="pol-'+k+'-options">'+[...new Set(H.state.people.map(p=>text(p[k])).filter(Boolean))].sort().map(v=>'<option value="'+esc(v)+'"></option>').join('')+'</datalist>').join('');
+    const categories=[...new Set(H.state.people.map(p=>text(p.category)).filter(Boolean))].sort();
+    const categoryList='<datalist id="pol-category-options">'+categories.map(v=>'<option value="'+esc(v)+'"></option>').join('')+'</datalist>';
+    function titleField(k,label,required=false){
+      const options=H.jobChoices(k,draft[k]).map(([v,name])=>'<option value="'+esc(v)+'">'+esc(name)+'</option>').join('');
+      return '<label>'+label+'<select name="'+k+'"'+(required?' required':'')+'><option value="">'+(required?'请选择':'不限')+'</option>'+options+'</select></label>';
+    }
     setPage(backButton+heading(existing?'编辑政策规则':'录入政策规则')+
-      '<form id="pol-form"><section class="panel"><h2>政策条文</h2><label class="pol-field">原文（可选）<textarea name="source" rows="4" placeholder="例如：任现职级满2年，可晋升为业务主管"></textarea></label><button type="button" class="secondary pol-gap" id="pol-parse">从原文提取条件</button><p class="hint pol-gap" id="pol-parsing">每次录入一条晋升路径。提取后可核对并调整条件。</p></section>'+
-      '<section class="panel"><h2>规则设置</h2><div class="fields pol-gap">'+field('name','规则名称 *',{required:true,placeholder:'例如：主管岗位任职条件'})+field('target','晋升目标 *',{required:true,placeholder:'填写目标职务或职级'})+'</div></section>'+
+      '<form id="pol-form"><section class="panel"><h2>政策条文</h2><label class="pol-field">原文（可选）<textarea name="source" rows="4" placeholder="例如：任现职级满2年，可晋升为三级主任科员"></textarea></label><button type="button" class="secondary pol-gap" id="pol-parse">从原文提取条件</button><p class="hint pol-gap" id="pol-parsing">每次录入一条晋升路径。提取后可核对并调整条件。</p></section>'+
+      '<section class="panel"><h2>规则设置</h2><div class="fields pol-gap">'+field('name','规则名称 *',{required:true,placeholder:'例如：科长任职条件'})+titleField('target','晋升目标 *',true)+'</div></section>'+
       '<section class="panel"><h2>匹配条件</h2><p class="hint pol-gap">下列已填条件须同时满足。任期按本次起任日期计算。</p><div class="fields pol-gap">'+
-      Object.entries(exact).map(([k,label])=>field(k,label,{list:true,placeholder:'不限'})).join('')+
+      titleField('rank',exact.rank)+titleField('position',exact.position)+field('category',exact.category,{list:true,placeholder:'不限'})+
       '<label>最低学历<select name="education"><option value="">不限</option>'+educationOptions+'</select></label>'+
       Object.entries(tenure).map(([k,[,label]])=>field(k,label+'月数',{type:'number',placeholder:'不限'})).join('')+
-      '<label class="wide">人工核验条件<textarea name="manual" rows="3" placeholder="例如：考核、特殊例外或累计任职要求"></textarea></label></div><p class="hint pol-gap">保留人工核验条件时，满足其余条件的人员将列入“待核实”。</p></section>'+datalists+
+      '<label class="wide">人工核验条件<textarea name="manual" rows="3" placeholder="例如：考核、特殊例外或累计任职要求"></textarea></label></div><p class="hint pol-gap">保留人工核验条件时，满足其余条件的人员将列入“待核实”。</p></section>'+categoryList+
       '<div class="pol-actions"><button class="primary" type="submit">确认并保存规则</button>'+(existing?'<button id="pol-delete" class="plain-btn danger" type="button">删除规则</button>':'')+'</div></form>'+
       '<div id="pol-ask" class="panel pol-gap" hidden><p></p><div class="action-row"><button id="pol-keep" class="secondary">继续编辑</button><button id="pol-confirm" class="plain-btn danger"></button></div></div>',onLeave);
     const form=q('#pol-form'),elem=key=>form.elements.namedItem(key);
@@ -253,8 +259,10 @@
       let conflicts=[];
       for (const [k,v] of Object.entries(parsed)) {
         if (k==='source' || k==='manual') continue;
-        if (text(elem(k).value) && text(elem(k).value)!==text(v)) {conflicts.push((exact[k]||({target:'晋升目标',name:'规则名称',education:'最低学历'}[k])||tenure[k][1]+'月数')+'：'+v);continue;}
-        elem(k).value=v;
+        const control=elem(k);
+        const unavailable=control.options && !Array.from(control.options).some(o=>o.value===String(v));
+        if (unavailable || (text(control.value) && text(control.value)!==text(v))) {conflicts.push((exact[k]||({target:'晋升目标',name:'规则名称',education:'最低学历'}[k])||tenure[k][1]+'月数')+'：'+v);continue;}
+        control.value=v;
       }
       if (conflicts.length) conflicts=conflicts.map(v=>'请核对原文与当前设置的差异（'+v+'）');
       elem('manual').value=[...new Set([elem('manual').value,parsed.manual,...conflicts].join('\n').split('\n').map(text).filter(Boolean))].join('\n');

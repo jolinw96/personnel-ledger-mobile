@@ -107,7 +107,7 @@
           clearTimeout(timer);
           channel.port1.close();
           if (current !== attempt) return;
-          if (event.data && event.data.revision === "1.1-install-3" && event.data.complete) ready();
+          if (event.data && event.data.revision === "1.2-release-1" && event.data.complete) ready();
           else problem("离线资源需要更新。请连接安装服务，再点“重新准备”。");
         };
         worker.postMessage({type:"verify-shell"},[channel.port2]);

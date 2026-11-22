@@ -87,7 +87,7 @@
     h().subBack = null;
     const departments = [[unassigned,'未分配科室'],...deptOptions()];
     if(!departments.some(([id])=>String(id)===filters.deptId)) filters.deptId='';
-    const vals = k => choices(people().map(p=>p[k]));
+    const vals = k => choices([...h().jobTitles[k],...people().map(p=>p[k])]);
     view().innerHTML = '<div class="heading"><h1>人员台账</h1>'+button('pe-add',icon('add')+'录入人员','primary')+'</div>'+
       '<section class="panel pe-search"><div class="pe-search-row"><label class="pe-search-box">'+icon('search')+'<input id="pe-query" type="search" aria-label="搜索姓名、科室、职务或职级" placeholder="姓名、科室、职务或职级" value="'+esc(filters.q)+'"></label>'+
       '<button type="button" id="pe-toggle" class="secondary" aria-controls="pe-filters" aria-expanded="'+expanded+'">'+icon('filter')+'<span id="pe-filter-count">筛选</span></button></div>'+
@@ -122,7 +122,7 @@
     view().innerHTML = backButton('返回')+'<div class="heading"><h1>人员档案</h1>'+button('pe-edit','编辑','secondary')+'</div>'+
       '<section class="panel pe-identity"><div class="pe-sign"><strong>'+esc(p.name)+'</strong><span>'+esc(h().deptName(p.deptId))+'</span></div><dl class="pe-details">'+
       detailField('性别',p.gender)+detailField('年龄',a == null || a === '' ? '' : a+' 岁')+
-      detailField(p.birth?'出生日期':'年龄登记日期',p.birth || p.ageAsOf)+detailField('学历',p.education)+detailField('人员类别',p.category)+(p.deptId!=='' && p.deptId!=null ? detailField('到科室时间',p.deptSince) : '')+'</dl></section>'+
+      detailField(p.birth?'出生年月':'年龄登记日期',p.birth || p.ageAsOf)+detailField('学历',p.education)+detailField('人员类别',p.category)+(p.deptId!=='' && p.deptId!=null ? detailField('到科室时间',p.deptSince) : '')+'</dl></section>'+
       (pastDepts.length ? '<section class="panel"><h2>历次科室</h2><ol class="pe-timeline">'+pastDepts.map(d=>'<li><strong>'+esc(d.name)+'</strong><span>到科室时间 '+pretty(d.start)+' · 归属变更登记日 '+pretty(d.end)+'</span></li>').join('')+'</ol></section>' : '')+
       '<section class="panel"><h2>当前任职</h2><dl class="pe-details">'+detailField('职务',p.position)+detailField('任现职务时间',p.positionSince)+detailField('职级',p.rank)+detailField('任现职级时间',p.rankSince)+'</dl></section>'+
       '<section class="panel"><h2>任职经历</h2>'+(timeline.length ? '<ol class="pe-timeline">'+timeline.map(e=>
@@ -147,11 +147,16 @@
       '<label class="pe-other" hidden>填写'+label+'<input maxlength="80" name="'+key+'Other" disabled></label></div>';
   }
   function historyFields(item={}) {
-    return '<div class="pe-history-row"><div class="pe-history-head"><strong>任职记录</strong><button type="button" class="plain-btn danger" data-remove>移除此条</button></div><div class="fields">'+
-      select('historyType','类型',choices(['职务','职级']),item.type || '职务','请选择','required')+
-      input('historyTitle','职务或职级名称',item.title,'maxlength="120" required')+
+    const type=item.type || '职务';
+    return '<div class="pe-history-row" data-original-type="'+esc(type)+'" data-original-title="'+esc(item.title)+'"><div class="pe-history-head"><strong>任职记录</strong><button type="button" class="plain-btn danger" data-remove>移除此条</button></div><div class="fields">'+
+      select('historyType','类型',choices(['职务','职级',type]),type,'请选择','required')+
+      select('historyTitle','职务或职级名称',historyChoices(type,item.title),item.title,'请选择','required')+
       input('historyStart','起始日期',item.start,'type="date" max="'+h().today()+'" required')+
       input('historyEnd','结束日期（至今可留空）',item.end,'type="date" max="'+h().today()+'"')+'</div></div>';
+  }
+  function historyChoices(type,previous){
+    const kind=type==='职务'?'position':type==='职级'?'rank':'';
+    return h().jobChoices(kind,previous);
   }
   function openPerson(id,back){
     const existing = id == null ? null : person(id);
@@ -169,11 +174,11 @@
       input('deptSince','到科室时间',p.deptSince,date)+customSelect('education','学历',[...education,p.education,...people().map(z=>z.education)],p.education)+
       customSelect('category','人员类别',[...categories,p.category,...people().map(z=>z.category)],p.category)+
       '<div class="pe-age-fields wide"><fieldset class="pe-age-choice"><legend>年龄信息</legend>'+
-      ['birth','age'].map((k,i)=>'<label><input type="radio" name="ageMode" value="'+k+'"'+(mode===k?' checked':'')+'>'+['填出生日期','填登记年龄'][i]+'</label>').join('')+'</fieldset>'+
-      '<div class="fields" id="pe-birth">'+input('birth','出生日期',p.birth,date)+'</div><div class="fields" id="pe-age">'+
+      ['birth','age'].map((k,i)=>'<label><input type="radio" name="ageMode" value="'+k+'"'+(mode===k?' checked':'')+'>'+['填出生年月','填登记年龄'][i]+'</label>').join('')+'</fieldset>'+
+      '<div class="fields" id="pe-birth">'+input('birth','出生年月',p.birth,'type="month" max="'+today.slice(0,7)+'" placeholder="YYYY-MM，如 1990-06" maxlength="7"')+'</div><div class="fields" id="pe-age">'+
       input('age','登记年龄（周岁）',p.age,'type="number" inputmode="numeric" min="0" max="130" step="1"')+input('ageAsOf','年龄登记日期',p.ageAsOf||today,date)+'</div></div></div></section>'+
-      '<section class="panel"><h2>当前任职</h2><div class="fields pe-form-fields">'+input('position','现任职务',p.position,'maxlength="120"')+
-      input('positionSince','任现职务时间',p.positionSince,date)+input('rank','现职级',p.rank,'maxlength="120"')+input('rankSince','任现职级时间',p.rankSince,date)+
+      '<section class="panel"><h2>当前任职</h2><div class="fields pe-form-fields">'+select('position','现任职务',h().jobChoices('position',p.position),p.position,'未登记')+
+      input('positionSince','任现职务时间',p.positionSince,date)+select('rank','现职级',h().jobChoices('rank',p.rank),p.rank,'未登记')+input('rankSince','任现职级时间',p.rankSince,date)+
       '</div></section><section class="panel"><div class="panel-head"><h2>任职经历</h2>'+button('pe-add-history',icon('add')+'添加经历','secondary')+
       '</div><div id="pe-history">'+(p.history||[]).map(historyFields).join('')+'</div><p class="pe-muted" id="pe-history-empty">可按时间登记历次职务或职级。</p></section>'+
       '<p role="alert" class="pe-form-error" id="pe-error" hidden></p><div class="pe-save"><button type="submit" class="primary">保存档案</button>'+button('pe-cancel','取消')+'</div></form>'+
@@ -210,6 +215,11 @@
       setDirty();
       if(e.target.name==='ageMode')syncMode();
       if(e.target.name==='deptId')syncDept();
+      if(e.target.name==='historyType'){
+        const row=e.target.closest('.pe-history-row');
+        const previous=row.dataset.originalType===e.target.value?row.dataset.originalTitle:'';
+        row.querySelector('[name=historyTitle]').innerHTML=options(historyChoices(e.target.value,previous),previous,'请选择');
+      }
       if(['education','category'].includes(e.target.name)){
         const other=field(e.target.name+'Other');
         other.disabled=e.target.value!=='__custom__';other.required=!other.disabled;other.parentElement.hidden=other.disabled;
@@ -240,20 +250,21 @@
         if(!data[k] || data[k]==='__custom__')return invalid(field(k+'Other'),'请填写'+(k==='education'?'学历':'人员类别')+'。');
       }
       for(const [k,label] of [['position','职务'],['rank','职级']]) {
-        if(!data[k] && data[k+'Since'])return invalid(field(k),'请填写对应的'+label+'名称。');
+        if(!data[k] && data[k+'Since'])return invalid(field(k),'请选择对应的'+label+'。');
       }
       const useBirth=get('ageMode')==='birth';
       data.birth=useBirth?get('birth'):'';
+      if(data.birth && (!h().isMonth(data.birth)||data.birth>today.slice(0,7)))return invalid(field('birth'),'请填写有效的出生年月，例如 1990-06，且不能晚于本月。');
       data.age=useBirth||get('age')===''?null:Number(get('age'));
       data.ageAsOf=data.age==null?'':get('ageAsOf');
       if(data.age!=null && !data.ageAsOf)return invalid(field('ageAsOf'),'请填写年龄登记日期。');
-      if(data.birth && ['deptSince','positionSince','rankSince'].some(k=>data[k]&&data[k]<data.birth))return invalid(field('birth'),'出生日期应在到科室和任职日期之前。');
+      if(data.birth && ['deptSince','positionSince','rankSince'].some(k=>data[k]&&data[k].slice(0,7)<data.birth))return invalid(field('birth'),'出生年月不能晚于到科室或任职月份。');
       data.history=[];
       for(const row of form.querySelectorAll('.pe-history-row')){
         const el=k=>row.querySelector('[name=history'+k+']');
         const entry={type:el('Type').value,title:el('Title').value.trim(),start:el('Start').value,end:el('End').value};
-        if(!entry.title)return invalid(el('Title'),'请填写经历中的职务或职级名称。');
-        if(data.birth && entry.start<data.birth)return invalid(el('Start'),'任职经历不能早于出生日期。');
+        if(!entry.title)return invalid(el('Title'),'请选择经历中的职务或职级。');
+        if(data.birth && entry.start.slice(0,7)<data.birth)return invalid(el('Start'),'任职经历不能早于出生月份。');
         if(entry.end && entry.end<entry.start)return invalid(el('End'),'结束日期不能早于起始日期。');
         data.history.push(entry);
       }
