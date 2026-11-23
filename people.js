@@ -40,6 +40,12 @@
       return [d.id,path.join(' / ')];
     });
   }
+  function establishmentOptions(){
+    return h().state.establishmentUnits.map(unit=>[unit.id,unit.name+(unit.legacy?'（旧归属）':'')]);
+  }
+  function historyNames(id,items){
+    return '<datalist id="'+id+'">'+choices(items.map(item=>item.name)).map(([name])=>'<option value="'+esc(name)+'"></option>').join('')+'</datalist>';
+  }
   const icons = {
     add:'<path d="M12 5v14M5 12h14"/>',
     search:'<circle cx="10" cy="10" r="6"/><path d="m15 15 5 5"/>',
@@ -96,17 +102,16 @@
   }
   function renderPeople() {
     h().subBack = null;
-    const items=deptOptions();
-    const departments = [[unassigned,'未分配科室'],...items];
+    const departments = [[unassigned,'未分配科室'],...deptOptions()];
     if(!departments.some(([id])=>String(id)===filters.deptId)) filters.deptId='';
-    const establishmentOptions=[[unverified,'待核实'],[unassigned,'未分配编制科室'],...items];
-    if(!establishmentOptions.some(([id])=>String(id)===filters.establishmentDeptId))filters.establishmentDeptId='';
+    const units=[[unverified,'待核实'],[unassigned,'未分配编制科室'],...establishmentOptions()];
+    if(!units.some(([id])=>String(id)===filters.establishmentDeptId))filters.establishmentDeptId='';
     const vals = k => choices([...h().jobTitles[k],...people().map(p=>p[k])]);
     view().innerHTML = '<div class="heading"><h1>人员台账</h1>'+button('pe-add',icon('add')+'录入人员','primary')+'</div>'+
       '<section class="panel pe-search"><div class="pe-search-row"><label class="pe-search-box">'+icon('search')+'<input id="pe-query" type="search" aria-label="搜索姓名、科室、职务或职级" placeholder="姓名、科室、职务或职级" value="'+esc(filters.q)+'"></label>'+
       '<button type="button" id="pe-toggle" class="secondary" aria-controls="pe-filters" aria-expanded="'+expanded+'">'+icon('filter')+'<span id="pe-filter-count">筛选</span></button></div>'+
       '<div id="pe-filters" class="fields pe-filters" '+(expanded ? '' : 'hidden')+'>'+
-      filterSelect('deptId','实际工作科室',departments)+filterSelect('establishmentDeptId','编制科室',establishmentOptions)+filterSelect('gender','性别',choices(['女','男','未登记']))+
+      filterSelect('deptId','实际工作科室',departments)+filterSelect('establishmentDeptId','编制科室',units)+filterSelect('gender','性别',choices(['女','男','未登记']))+
       filterSelect('education','学历',choices([...education,...people().map(p=>p.education)]))+filterSelect('category','人员类别',choices([...categories,...people().map(p=>p.category)]))+
       filterSelect('position','现任职务',vals('position'))+filterSelect('rank','现职级',vals('rank'))+
       ['min','max'].map((k,i)=>'<label>'+['最低年龄','最高年龄'][i]+'<input type="number" min="0" max="130" step="1" name="'+k+'" placeholder="不限" value="'+esc(filters[k])+'"></label>').join('')+
@@ -183,7 +188,7 @@
       select('historyType','类型',choices(['职务','职级',type]),type,'请选择','required')+
       select('historyTitle','职务或职级名称',historyChoices(type,item.title),item.title,'请选择','required')+
       input('historyActualDept','当时实际工作科室',item.actualDeptName,'list="pe-history-depts" maxlength="80" placeholder="选择或填写当时名称"')+
-      input('historyEstablishmentDept','当时编制科室',item.establishmentDeptName,'list="pe-history-depts" maxlength="80" placeholder="选择或填写当时名称"')+
+      input('historyEstablishmentDept','当时编制科室',item.establishmentDeptName,'list="pe-history-units" maxlength="80" placeholder="选择或填写当时名称"')+
       input('historyStart','起始日期',item.start,'type="date" max="'+h().today()+'" required')+
       input('historyEnd','结束日期（至今可留空）',item.end,'type="date" max="'+h().today()+'"')+'</div></div>';
   }
@@ -275,7 +280,7 @@
     const leave = existing ? ()=>showPerson(existing.id,finish) : finish;
     const p = existing || {};
     const today = h().today();
-    const depts=deptOptions();
+    const directories={actual:deptOptions(),establishment:establishmentOptions()};
     const mode = p.age != null && p.age!=='' && !p.birth ? 'age' : 'birth';
     const date = 'type="date" max="'+today+'"';
     const originalId=axis=>p[axis.id]==null?'':String(p[axis.id]);
@@ -289,15 +294,15 @@
       '<div class="fields" id="pe-birth">'+input('birth','出生年月',p.birth,'type="month" max="'+today.slice(0,7)+'" placeholder="YYYY-MM，如 1990-06" maxlength="7"')+'</div><div class="fields" id="pe-age">'+
       input('age','登记年龄（周岁）',p.age,'type="number" inputmode="numeric" min="0" max="130" step="1"')+input('ageAsOf','年龄登记日期',p.ageAsOf||today,date)+'</div></div></div></section>'+
       '<section class="panel"><h2>科室归属</h2><div class="fields pe-form-fields">'+
-      select('deptId','实际工作科室',depts,p.deptId,'未分配实际工作科室')+
+      select('deptId','实际工作科室',directories.actual,p.deptId,'未分配实际工作科室')+
       input('deptSince','实际到科室时间',p.deptSince,date)+
-      select('establishmentDeptId','编制科室',[[unverified,'待核实'],...depts],establishmentValue,'未分配编制科室')+
+      select('establishmentDeptId','编制科室',[[unverified,'待核实'],...directories.establishment],establishmentValue,'未分配编制科室')+
       input('establishmentSince','到编时间',p.establishmentSince,date)+'</div>'+
-      button('pe-copy-actual','编制科室选用实际工作科室','plain-btn pe-copy-actual')+'</section>'+
+      button('pe-copy-actual','选用同名编制单位','plain-btn pe-copy-actual')+'</section>'+
       '<section class="panel"><h2>当前任职</h2><div class="fields pe-form-fields">'+select('position','现任职务',h().jobChoices('position',p.position),p.position,'未登记')+
       input('positionSince','任现职务时间',p.positionSince,date)+select('rank','现职级',h().jobChoices('rank',p.rank),p.rank,'未登记')+input('rankSince','任现职级时间',p.rankSince,date)+
       '</div></section><section class="panel"><div class="panel-head"><h2>任职经历</h2>'+button('pe-add-history',icon('add')+'添加经历','secondary')+
-      '</div><datalist id="pe-history-depts">'+h().state.depts.map(d=>'<option value="'+esc(d.name)+'"></option>').join('')+'</datalist><div id="pe-history">'+(p.history||[]).map(historyFields).join('')+'</div><p class="pe-muted" id="pe-history-empty">可按时间登记历次职务或职级。</p></section>'+
+      '</div>'+historyNames('pe-history-depts',h().state.depts)+historyNames('pe-history-units',h().state.establishmentUnits)+'<div id="pe-history">'+(p.history||[]).map(historyFields).join('')+'</div><p class="pe-muted" id="pe-history-empty">可按时间登记历次职务或职级。</p></section>'+
       '<p role="alert" class="pe-form-error" id="pe-error" hidden></p><div class="pe-save"><button type="submit" class="primary">保存档案</button>'+button('pe-cancel','取消')+'</div></form>'+
       '<section class="panel pe-confirm" id="pe-discard" hidden><p>放弃尚未保存的修改？</p><div class="action-row">'+button('pe-resume','继续编辑')+button('pe-leave','放弃修改','pe-destructive')+'</div></section>';
     const form=at('#pe-form');
@@ -332,8 +337,15 @@
     syncMode();syncHistory();axes.forEach(syncDept);
     on('#pe-copy-actual','click',()=>{
       const establishment=field('establishmentDeptId');
-      if(establishment.value===field('deptId').value)return;
-      establishment.value=field('deptId').value;
+      const dept=h().state.depts.find(d=>String(d.id)===field('deptId').value);
+      const matches=h().state.establishmentUnits.filter(unit=>dept && unit.name===dept.name);
+      if(matches.length!==1){
+        h().notify(matches.length?'有多个同名编制单位，请手动选择。':'没有同名编制单位，请手动选择。');
+        establishment.focus();
+        return;
+      }
+      if(establishment.value===String(matches[0].id))return;
+      establishment.value=String(matches[0].id);
       establishment.dispatchEvent(new Event('change',{bubbles:true}));
     });
     function setDirty(){dirty=true;at('#pe-error').hidden=true;}
@@ -367,7 +379,7 @@
       for(const axis of axes){
         const value=get(axis.id);
         const pending=axis.kind==='establishment' && value===unverified;
-        const department=depts.find(([key])=>String(key)===value);
+        const department=directories[axis.kind].find(([key])=>String(key)===value);
         if(value && !department && !pending)return invalid(field(axis.id),'请选择有效的'+axis.label+'。');
         data[axis.id]=department?department[0]:pending?null:'';
         data[axis.since]=department?get(axis.since):'';
