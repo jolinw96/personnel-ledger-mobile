@@ -237,15 +237,16 @@
       if(!H.save()){go(returnPage);return;}H.notify("科室已保存");go(returnPage);
     };
     click("delete-dept",()=>{
-      const affected=H.state.people.filter(p=>String(p.deptId)===String(d.id)||String(p.establishmentDeptId)===String(d.id));
-      const children=H.state.depts.filter(x=>String(x.parentId)===String(d.id));
+      const matches=id=>id!=null && String(id)===String(d.id);
+      const affected=H.state.people.filter(p=>matches(p.deptId)||matches(p.establishmentDeptId));
+      const children=H.state.depts.filter(x=>matches(x.parentId));
       const parentId=d.parentId==null?"":d.parentId;
       const message=["删除科室「"+d.name+"」？"];
       if(affected.length)message.push("将清除 "+affected.length+" 人与本科室的对应归属，并将原归属保存到过往经历。其他科室归属继续保留。");
       if(children.length)message.push(children.length+" 个直属子科室将移到「"+(parentId===""?"局机关（本级）":H.deptName(parentId))+"」下，成员仍属各自科室。");
       if(!confirm(message.join("\n")))return;
       for(const p of affected){
-        const actual=String(p.deptId)===String(d.id),establishment=String(p.establishmentDeptId)===String(d.id);
+        const actual=matches(p.deptId),establishment=matches(p.establishmentDeptId);
         H.rememberDept(p,p,"",{actual,establishment});
         if(actual){p.deptId="";p.deptSince="";}
         if(establishment){p.establishmentDeptId="";p.establishmentSince="";}
