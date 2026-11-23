@@ -10,6 +10,26 @@
     position:["科长","副科长"],
     rank:["三级调研员","四级调研员","一级主任科员","二级主任科员","三级主任科员","四级主任科员","一级科员","七级职员","八级职员","九级职员"]
   };
+  const staffCategories = new Map([
+    ...["公务员","公务员(行政编)","公务员(行政编制)","行政编","行政编制"].map(name=>[name,"civil"]),
+    ...["参公","参公人员","参公管理人员","参公事业编","参公事业编制"].map(name=>[name,"reference"]),
+    ...["事业编","事业编制","事业编制人员"].map(name=>[name,"institution"])
+  ]);
+  const staffGroup = p => staffCategories.get(String(p.category||"").trim().replace(/（/g,"(").replace(/）/g,")")) || "";
+  const quotaGroups = {
+    positions:[
+      {key:"civilChief",label:"公务员科长",group:"civil",title:"科长"},
+      {key:"civilDeputy",label:"公务员副科长",group:"civil",title:"副科长"},
+      {key:"referenceChief",label:"参公科长",group:"reference",title:"科长"},
+      {key:"referenceDeputy",label:"参公副科长",group:"reference",title:"副科长"}
+    ],
+    ranks:[
+      {key:"research34",label:"三、四级调研员",titles:["三级调研员","四级调研员"]},
+      {key:"principal12",label:"一、二级主任科员",titles:["一级主任科员","二级主任科员"]},
+      {key:"principal34",label:"三、四级主任科员",titles:["三级主任科员","四级主任科员"]}
+    ]
+  };
+  const quotaKeys=new Set([...quotaGroups.positions,...quotaGroups.ranks].map(group=>group.key));
   function jobChoices(kind,previous){
     const titles = kind==="target" ? [...jobTitles.position,...jobTitles.rank] : jobTitles[kind] || [];
     const pairs = titles.map(title=>[title,title]);
@@ -46,6 +66,9 @@
     for(const d of data.depts){
       if(typeof d.name!=="string"||!d.name.trim()||!flat(d,["parentId"]))bad();
       if(d.quota!=null&&(!Number.isSafeInteger(d.quota)||d.quota<0))bad();
+      if(d.postQuotas!=null && (typeof d.postQuotas!=="object" || Array.isArray(d.postQuotas) ||
+        !Object.entries(d.postQuotas).every(([key,value])=>quotaKeys.has(key) &&
+          (value===null || (Number.isSafeInteger(value) && value>=0)))))bad();
       parents.set(String(d.id),String(d.parentId||""));
     }
     const resolved=new Set();
@@ -61,20 +84,34 @@
     for(const p of data.people){
       if(typeof p.name!=="string"||!p.name.trim()||!flat(p,["gender","birth","age","ageAsOf","education","category","position","rank","deptSince","rankSince","positionSince"]))bad();
       if(p.deptId==="" ? !!p.deptSince : !idOK(p.deptId)||!parents.has(String(p.deptId)))bad();
+      if(p.establishmentDeptId==null || p.establishmentDeptId===""){
+        if(p.establishmentSince)bad();
+      }else if(!idOK(p.establishmentDeptId)||!parents.has(String(p.establishmentDeptId)))bad();
+      if(!isDate(p.establishmentSince))bad();
       if(p.deptHistory!=null&&(!Array.isArray(p.deptHistory)||!p.deptHistory.every(h=>
         h && typeof h.name==="string" && h.name.trim() && isDate(h.start) && !!h.end && isDate(h.end) &&
-        ["effectiveDate","positionSince","rankSince"].every(k=>isDate(h[k])) &&
-        ["position","rank"].every(k=>h[k]==null||typeof h[k]==="string") &&
-        (!h.effectiveDate || ((!h.start || h.effectiveDate>=h.start) && h.effectiveDate<=h.end))
+        ["effectiveDate","positionSince","rankSince","establishmentStart","actualEffectiveDate","establishmentEffectiveDate"].every(k=>isDate(h[k])) &&
+        ["position","rank","establishmentName"].every(k=>h[k]==null||typeof h[k]==="string") &&
+        ["actualChanged","establishmentChanged"].every(k=>h[k]==null||typeof h[k]==="boolean") &&
+        (!h.effectiveDate || (h.effectiveDate<=h.end && (h.actualChanged===false || !h.start || h.effectiveDate>=h.start))) &&
+        (!h.actualEffectiveDate || (h.actualEffectiveDate<=h.end && (!h.start || h.actualEffectiveDate>=h.start))) &&
+        (!h.establishmentEffectiveDate || (h.establishmentEffectiveDate<=h.end && (!h.establishmentStart || h.establishmentEffectiveDate>=h.establishmentStart)))
       )))bad();
       if(["gender","education","category","rank","position"].some(k=>p[k]!=null&&typeof p[k]!=="string"))bad();
       if(!isMonth(p.birth)&&!isDate(p.birth))bad();
       if(["ageAsOf","deptSince","rankSince","positionSince"].some(k=>!isDate(p[k])))bad();
       if(p.age!=null&&p.age!==""&&(!Number.isInteger(Number(p.age))||+p.age<0||+p.age>130))bad();
-      if(p.history!=null && (!Array.isArray(p.history)||!p.history.every(h=>h&&typeof h==="object"&&typeof h.title==="string"&&typeof h.type==="string"&&isDate(h.start)&&isDate(h.end))))bad();
+      if(p.history!=null && (!Array.isArray(p.history)||!p.history.every(h=>h&&typeof h==="object"&&typeof h.title==="string"&&typeof h.type==="string"&&isDate(h.start)&&isDate(h.end)&&
+        ["actualDeptName","establishmentDeptName"].every(k=>h[k]==null||typeof h[k]==="string"))))bad();
     }
     if(typeof window.validatePolicies==="function"&&!window.validatePolicies(data.policies))bad();
-    for(const p of data.people)if(p.birth)p.birth=p.birth.slice(0,7);
+    for(const p of data.people){
+      if(p.birth)p.birth=p.birth.slice(0,7);
+      if(!Object.prototype.hasOwnProperty.call(p,"establishmentDeptId")){
+        p.establishmentDeptId=p.deptId;
+        p.establishmentSince="";
+      }
+    }
     return data;
   }
   let state=initial(), unreadable=false;
@@ -100,10 +137,18 @@
   }
   const HR=window.HR={state,save,restore,validate,initial,esc,icon,today,notify,subBack:null,container:()=>document.getElementById("content"),
     deptName:id=>{if(id==="")return "未分配科室";const d=HR.state.depts.find(d=>String(d.id)===String(id));return d?d.name:"未登记";},
-    rememberDept:(person,previous=person,effectiveDate="")=>{
-      if(previous.deptId===""||previous.deptId==null)return;
-      const entry={name:HR.deptName(previous.deptId),start:previous.deptSince||"",end:today()};
-      if(effectiveDate)Object.assign(entry,{effectiveDate,position:previous.position||"",positionSince:previous.positionSince||"",rank:previous.rank||"",rankSince:previous.rankSince||""});
+    establishmentName:p=>p.establishmentDeptId==null?"待核实":HR.deptName(p.establishmentDeptId),
+    rememberDept:(person,previous=person,effectiveDate="",changes={actual:true,establishment:false})=>{
+      if(!changes.actual&&!changes.establishment)return;
+      const entry={
+        name:HR.deptName(previous.deptId),start:previous.deptSince||"",end:today(),
+        establishmentName:HR.establishmentName(previous),establishmentStart:previous.establishmentSince||"",
+        actualChanged:changes.actual,establishmentChanged:changes.establishment,
+        actualEffectiveDate:changes.actual?(changes.actualDate||effectiveDate):"",
+        establishmentEffectiveDate:changes.establishment?(changes.establishmentDate||effectiveDate):"",
+        position:previous.position||"",positionSince:previous.positionSince||"",rank:previous.rank||"",rankSince:previous.rankSince||""
+      };
+      if(entry.actualEffectiveDate||entry.establishmentEffectiveDate)entry.effectiveDate=entry.actualEffectiveDate||entry.establishmentEffectiveDate;
       person.deptHistory=(person.deptHistory||[]).concat(entry);
     },
     age:(p,date=today())=>{
@@ -112,5 +157,5 @@
       const n=Number(when.slice(0,4))-Number(p.birth.slice(0,4))-(when.slice(5,7)<p.birth.slice(5,7)?1:0);
       return Number.isFinite(n)&&n>=0?n:null;
     },isUnreadable:()=>unreadable, raw:()=>localStorage.getItem(key)};
-  Object.assign(HR,{jobTitles,jobChoices,isMonth});
+  Object.assign(HR,{jobTitles,jobChoices,isMonth,quotaGroups,staffGroup});
 })();

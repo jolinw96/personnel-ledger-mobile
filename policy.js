@@ -2,7 +2,7 @@
   'use strict';
   const exact = {rank:'现职级', position:'现职务', category:'人员类别'};
   const tenure = {
-    rankMonths:['rankSince','任现职级'], positionMonths:['positionSince','任现职务'], deptMonths:['deptSince','到科室']
+    rankMonths:['rankSince','任现职级'], positionMonths:['positionSince','任现职务'], deptMonths:['deptSince','到实际工作科室']
   };
   const levels = ['初中','高中','大专','本科','硕士研究生','博士研究生'];
   const educationAlias = {专科:'大专',大学专科:'大专',大学本科:'本科',硕士:'硕士研究生',博士:'博士研究生'};
@@ -200,7 +200,7 @@
     setPage(backButton+heading('人员测算明细')+
       '<section class="panel"><h2>'+esc(ruleIndex==null?'全部政策规则':rules[0].name)+'</h2><p class="date">截至 '+esc(forecastDate)+'</p><div class="pol-tabs">'+Object.entries(tabs).map(([key,name])=>'<button class="chip" data-filter="'+key+'" aria-pressed="'+(key===filter)+'">'+name+' '+counts[key]+'</button>').join('')+'</div>'+
       (filtered.length?filtered.slice(0,limit).map(({person,statuses})=>{
-        const name=esc(person.name),dept=esc(H.deptName(person.deptId));
+        const name=esc(person.name),dept='实际：'+esc(H.deptName(person.deptId))+' · 编制：'+esc(H.establishmentName(person));
         return '<details class="pol-person"><summary><strong>'+name+'</strong><span>'+dept+' ›</span></summary>'+
           rules.map((r,i)=>'<div class="pol-evidence"><b>'+esc(r.name)+' · '+statusName[statuses[i]]+'</b><ul>'+check(person,r,forecastDate).notes.map(n=>'<li>'+esc(n)+'</li>').join('')+'</ul></div>').join('')+'</details>';
       }).join(''):'<p class="empty">此分类下暂无人员。</p>')+
