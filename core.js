@@ -153,6 +153,43 @@
     if(previous && !titles.includes(previous))pairs.push([previous,previous+"（原记录）"]);
     return pairs;
   }
+  function roleHistoryValues(entry){
+    const originalType=entry.type||"",originalTitle=entry.title||"";
+    const known=originalType==="职务" || originalType==="职级";
+    return {
+      position:entry.position ?? (originalType==="职务"?originalTitle:""),
+      rank:entry.rank ?? (originalType==="职级"?originalTitle:""),
+      otherType:known?"":originalType,otherTitle:known?"":originalTitle
+    };
+  }
+  function updateRoleHistory(entry,position,rank){
+    const previous=roleHistoryValues(entry);
+    const typed=typeof entry.type==="string" && typeof entry.title==="string";
+    if(typeof position!=="string" || typeof rank!=="string")throw Error("任职经历的职务或职级无效");
+    if(typed && position===previous.position && rank===previous.rank)return entry;
+    if(!position && !rank && !previous.otherType && !previous.otherTitle)throw Error("请选择任职经历的职务或职级");
+    entry.position=position;
+    entry.rank=rank;
+    if(!previous.otherType && !previous.otherTitle){
+      entry.type=position?"职务":"职级";
+      entry.title=position||rank;
+    }
+    return entry;
+  }
+  function validRoleEntry(entry){
+    if(!entry || typeof entry!=="object" || Array.isArray(entry) || !isDate(entry.start) || !isDate(entry.end))return false;
+    if(entry.actualDeptName!=null && typeof entry.actualDeptName!=="string")return false;
+    if(["position","rank"].some(k=>has(entry,k) && typeof entry[k]!=="string"))return false;
+    if(has(entry,"type") || has(entry,"title")){
+      if(typeof entry.type!=="string" || typeof entry.title!=="string")return false;
+      if(!has(entry,"position") && !has(entry,"rank"))return true;
+      const values=roleHistoryValues(entry);
+      return !!(values.position || values.rank || values.otherType || values.otherTitle);
+    }
+    if(!entry.position && !entry.rank)return false;
+    updateRoleHistory(entry,entry.position||"",entry.rank||"");
+    return true;
+  }
   const isMonth = value => typeof value==="string" && /^[0-9]{4}-(0[1-9]|1[0-2])$/.test(value);
   function historyMonths(record){
     return {
@@ -297,8 +334,7 @@
       if(!isMonth(p.birth)&&!isDate(p.birth))bad();
       if(["ageAsOf","deptSince","rankSince","positionSince"].some(k=>!isDate(p[k])))bad();
       if(p.age!=null&&p.age!==""&&(!Number.isInteger(Number(p.age))||+p.age<0||+p.age>130))bad();
-      if(p.history!=null && (!Array.isArray(p.history)||!p.history.every(h=>h&&typeof h==="object"&&typeof h.title==="string"&&typeof h.type==="string"&&isDate(h.start)&&isDate(h.end)&&
-        (h.actualDeptName==null||typeof h.actualDeptName==="string"))))bad();
+      if(p.history!=null && (!Array.isArray(p.history)||!p.history.every(validRoleEntry)))bad();
     }
     if(typeof window.validatePolicies==="function"&&!window.validatePolicies(data.policies))bad();
     if(has(data,"unitPostQuotas")){
@@ -371,5 +407,5 @@
       const n=Number(when.slice(0,4))-Number(p.birth.slice(0,4))-(when.slice(5,7)<p.birth.slice(5,7)?1:0);
       return Number.isFinite(n)&&n>=0?n:null;
     },isUnreadable:()=>unreadable, raw:()=>localStorage.getItem(key)};
-  Object.assign(HR,{jobTitles,jobChoices,isMonth,historyMonths,updateHistoryMonths,quotaGroups,staffGroup,unitTarget,clearUnitTargetOverride});
+  Object.assign(HR,{jobTitles,jobChoices,roleHistoryValues,updateRoleHistory,isMonth,historyMonths,updateHistoryMonths,quotaGroups,staffGroup,unitTarget,clearUnitTargetOverride});
 })();
