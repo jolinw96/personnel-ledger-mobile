@@ -15,18 +15,11 @@
 .post-section {margin-top:18px}
 .post-section h3,.quota-fields legend {font-size:14px;font-weight:650;color:var(--blue)}
 .post-section h3 {margin-bottom:7px}
-.vacancy-card {border-top:1px solid var(--line)}
-.vacancy-card:last-child {border-bottom:1px solid var(--line)}
-.vacancy-card > summary {display:flex;align-items:center;gap:10px;min-height:55px;padding:7px 2px;cursor:pointer;list-style:none}
-.vacancy-card > summary::-webkit-details-marker {display:none}
-.vacancy-card > summary::after {content:"";border:solid var(--muted);border-width:0 1.8px 1.8px 0;width:7px;height:7px;flex-shrink:0;transform:rotate(45deg);margin:0 4px 4px}
-.vacancy-card[open] > summary::after {transform:rotate(225deg);margin-top:7px}
-.post-name {flex:1;font-size:14px;font-weight:560}
-.post-total {font-size:12px;text-align:right;color:var(--muted);font-variant-numeric:tabular-nums}
-.post-total b {font-size:19px;color:var(--blue);line-height:1.2}
-.post-total small {display:block;font-size:11px}
-.post-body {margin:0 0 10px}
-.post-table th:first-child {width:34%}
+.unit-quota-head {display:flex;align-items:center;justify-content:space-between;gap:8px}
+.unit-quota-head span {color:var(--ink);font-weight:650}
+.post-table th:first-child {width:39%}
+.post-table th:nth-child(3) {width:18%}
+.post-table td:last-child {font-weight:650;color:var(--blue)}
 .post-over {color:#973936;font-size:13px}
 .quota-fields {padding:10px 0 0;margin:16px 0;border:0;border-top:1px solid var(--line);min-width:0}
 .quota-fields legend {padding:0 7px 0 0}

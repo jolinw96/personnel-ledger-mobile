@@ -2,7 +2,7 @@
   "use strict";
   const key = "cn.personnel-ledger-mobile.github-pages.v1";
   const deptNames = ["办公室","人事教育科","预算科","国库科","行政政法科","科教文科","经济建设科","农业农村科","社会保障科","国有资产管理科","监督评价科","政府采购管理科","会计科","信息中心"];
-  const initial = () => ({people:[],depts:deptNames.map((name,i)=>({id:"d"+(i+1),name,parentId:""})),policies:[]});
+  const initial = () => ({people:[],depts:deptNames.map((name,i)=>({id:"d"+(i+1),name,parentId:""})),policies:[],unitPostQuotas:{}});
   const esc = str => String(str==null?"":str).replace(/[&<>"']/g,c=>({"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;","'":"&#39;"}[c]));
   const iso = d => [d.getFullYear(),String(d.getMonth()+1).padStart(2,"0"),String(d.getDate()).padStart(2,"0")].join("-");
   const today = () => iso(new Date());
@@ -30,6 +30,23 @@
     ]
   };
   const quotaKeys=new Set([...quotaGroups.positions,...quotaGroups.ranks].map(group=>group.key));
+  const quotaValue=value=>Number.isSafeInteger(value)&&value>=0;
+  function validPostQuotas(quotas){
+    return !!quotas && typeof quotas==="object" && !Array.isArray(quotas) &&
+      Object.entries(quotas).every(([key,n])=>quotaKeys.has(key)&&(n===null||quotaValue(n)));
+  }
+  function migrateUnitQuotas(depts){
+    const quotas={};
+    if(!depts.length)return quotas;
+    for(const key of quotaKeys){
+      const values=depts.map(d=>d.postQuotas && d.postQuotas[key]);
+      if(values.every(quotaValue)){
+        const total=values.reduce((sum,n)=>sum+n,0);
+        if(Number.isSafeInteger(total))quotas[key]=total;
+      }
+    }
+    return quotas;
+  }
   function jobChoices(kind,previous){
     const titles = kind==="target" ? [...jobTitles.position,...jobTitles.rank] : jobTitles[kind] || [];
     const pairs = titles.map(title=>[title,title]);
@@ -66,9 +83,7 @@
     for(const d of data.depts){
       if(typeof d.name!=="string"||!d.name.trim()||!flat(d,["parentId"]))bad();
       if(d.quota!=null&&(!Number.isSafeInteger(d.quota)||d.quota<0))bad();
-      if(d.postQuotas!=null && (typeof d.postQuotas!=="object" || Array.isArray(d.postQuotas) ||
-        !Object.entries(d.postQuotas).every(([key,value])=>quotaKeys.has(key) &&
-          (value===null || (Number.isSafeInteger(value) && value>=0)))))bad();
+      if(d.postQuotas!=null && !validPostQuotas(d.postQuotas))bad();
       parents.set(String(d.id),String(d.parentId||""));
     }
     const resolved=new Set();
@@ -105,6 +120,11 @@
         ["actualDeptName","establishmentDeptName"].every(k=>h[k]==null||typeof h[k]==="string"))))bad();
     }
     if(typeof window.validatePolicies==="function"&&!window.validatePolicies(data.policies))bad();
+    if(Object.prototype.hasOwnProperty.call(data,"unitPostQuotas")){
+      if(!validPostQuotas(data.unitPostQuotas))bad();
+    }else{
+      data.unitPostQuotas=migrateUnitQuotas(data.depts);
+    }
     for(const p of data.people){
       if(p.birth)p.birth=p.birth.slice(0,7);
       if(!Object.prototype.hasOwnProperty.call(p,"establishmentDeptId")){

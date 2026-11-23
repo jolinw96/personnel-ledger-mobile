@@ -46,34 +46,19 @@
     else if(page==="policy")window.renderPolicy();
     else storage();
   }
-  function staffingStats(){
-    const rows=H.state.depts.map(dept=>({dept,work:0,staffed:0,posts:new Map()}));
+  function staffingTable(){
+    const rows=H.state.depts.map(dept=>({dept,work:0,staffed:0}));
     const byDept=new Map(rows.map(row=>[String(row.dept.id),row]));
-    const unverifiedPosts=new Map();
     let noWork=0, unverified=0, unassigned=0;
     for(const person of H.state.people){
       const workplace=byDept.get(String(person.deptId));
       if(workplace)workplace.work++;else noWork++;
-      const category=H.staffGroup(person);
-      if(!category)continue;
+      if(!H.staffGroup(person))continue;
       const owner=person.establishmentDeptId==null?null:byDept.get(String(person.establishmentDeptId));
       if(owner)owner.staffed++;
       else if(person.establishmentDeptId==null)unverified++;
-      else {unassigned++;continue;}
-      const counts=owner?owner.posts:unverifiedPosts;
-      for(const slot of H.quotaGroups.positions){
-        if(category===slot.group && person.position===slot.title)counts.set(slot.key,(counts.get(slot.key)||0)+1);
-      }
-      if(category==="civil" || category==="reference"){
-        for(const slot of H.quotaGroups.ranks){
-          if(slot.titles.includes(person.rank))counts.set(slot.key,(counts.get(slot.key)||0)+1);
-        }
-      }
+      else unassigned++;
     }
-    return {rows,noWork,unverified,unassigned,unverifiedPosts};
-  }
-  function staffingTable(stats){
-    const {rows,noWork,unverified,unassigned}=stats;
     const people=H.state.people.length;
     const share=count=>people?(100*count/people).toFixed(1)+"%":"—";
     const headcount=count=>count+'<small>'+share(count)+'</small>';
@@ -84,9 +69,9 @@
     const staffedTotal=rows.reduce((sum,row)=>sum+row.staffed,0);
     const body=rows.map(({dept,work,staffed})=>{
       const quota=dept.quota==null?null:dept.quota;
-      return '<tr data-staff-row="'+e(dept.id)+'"><th scope="row">'+e(dept.name)+'</th><td>'+headcount(work)+'</td><td><button class="staff-edit" data-staff-edit="'+e(dept.id)+'" aria-label="编辑'+e(dept.name)+'的编制和岗位名额">'+(quota===null?"未设置":quota)+'</button></td><td>'+staffed+'</td><td>'+gap(quota===null?null:quota-staffed)+'</td></tr>';
+      return '<tr data-staff-row="'+e(dept.id)+'"><th scope="row">'+e(dept.name)+'</th><td>'+headcount(work)+'</td><td><button class="staff-edit" data-staff-edit="'+e(dept.id)+'" aria-label="编辑'+e(dept.name)+'的编制数">'+(quota===null?"未设置":quota)+'</button></td><td>'+staffed+'</td><td>'+gap(quota===null?null:quota-staffed)+'</td></tr>';
     }).join("");
-    const note='<p class="hint staff-note">空编 = 编制数 − 编制实有。按编制所在科室统计公务员、参公和事业编制人员，借调人员不占编。点编制数可设置名额。</p>';
+    const note='<p class="hint staff-note">空编 = 编制数 − 编制实有。按编制所在科室统计公务员、参公和事业编制人员，借调人员不占编。点编制数可修改。</p>';
     const table=rows.length?'<table class="staff-table"><thead><tr><th scope="col">科室</th><th scope="col">实际工作人数</th><th scope="col">编制数</th><th scope="col">编制实有</th><th scope="col">'+(unverified?"暂算空编":"空编")+'</th></tr></thead><tbody>'+body+'</tbody><tfoot><tr><th scope="row">科室合计</th><td>'+headcount(people-noWork)+'</td><td>'+(quotaTotal===null?"—":quotaTotal)+'</td><td>'+staffedTotal+'</td><td>'+gap(quotaTotal===null?null:quotaTotal-staffedTotal)+'</td></tr></tfoot></table>':'<div class="empty">请先在组织架构中添加科室。</div>';
     const statuses=[];
     if(unverified)statuses.push(unverified+' 名在编人员的编制科室待核实，当前空编为暂算数。');
@@ -95,45 +80,35 @@
     if(noWork)statuses.push('未分配实际工作科室 '+noWork+' 人（'+share(noWork)+'）。');
     return note+table+statuses.map(text=>'<p class="hint staff-note">'+text+'</p>').join("");
   }
-  function vacancyCard(slot,stats){
-    const entries=stats.rows.map(({dept,posts})=>{
-      const quota=dept.postQuotas && dept.postQuotas[slot.key];
-      const actual=posts.get(slot.key)||0;
-      return {dept,quota,actual,gap:quota==null?null:quota-actual};
-    });
-    const known=entries.filter(row=>row.gap!==null);
-    const vacancies=known.reduce((sum,row)=>sum+Math.max(0,row.gap),0);
-    const pending=stats.unverifiedPosts.get(slot.key)||0;
-    const missing=entries.length-known.length;
-    entries.sort((a,b)=>{
-      if(a.gap===null)return b.gap===null?0:1;
-      if(b.gap===null)return -1;
-      return b.gap-a.gap;
-    });
-    const rows=entries.map(({dept,quota,actual,gap})=>{
-      const vacancy=gap===null?"—":gap<0?'<span class="post-over">超配 '+(-gap)+'</span>':String(gap);
-      const quotaLabel=quota==null?"未设置":quota;
-      return '<tr data-vacancy-dept="'+e(dept.id)+'"><th scope="row">'+e(dept.name)+'</th><td><button class="staff-edit" data-staff-edit="'+e(dept.id)+'" data-post-key="'+e(slot.key)+'" aria-label="设置'+e(dept.name)+e(slot.label)+'名额">'+quotaLabel+'</button></td><td>'+actual+'</td><td>'+vacancy+'</td></tr>';
-    }).join("");
-    const count=known.length&&Number.isSafeInteger(vacancies)?String(vacancies):"—";
-    const scope=known.length===0?"名额待设置":missing?'已设 '+known.length+' / '+entries.length+' 个科室':"";
-    return '<details class="vacancy-card" data-vacancy="'+e(slot.key)+'"><summary><span class="post-name">'+e(slot.label)+'</span><span class="post-total"><b data-vacant-total>'+count+'</b>'+(known.length?' 个'+(pending?' · 暂算':''):'')+(scope?'<small>'+scope+'</small>':'')+'</span></summary>'+
-      '<div class="post-body">'+(pending?'<p class="hint staff-note">有 '+pending+' 名符合该岗位的人员待核实编制科室。</p>':'')+
-      '<table class="staff-table post-table"><thead><tr><th scope="col">科室</th><th scope="col">核定名额</th><th scope="col">编制实有</th><th scope="col">空缺</th></tr></thead><tbody>'+rows+'</tbody></table></div></details>';
-  }
-  function vacancyBoard(stats){
-    if(!stats.rows.length)return '<div class="empty">请先在组织架构中添加科室和岗位名额。</div>';
-    function section(title,slots){
-      return '<section class="post-section"><h3>'+title+'</h3>'+slots.map(s=>vacancyCard(s,stats)).join("")+'</section>';
+  function vacancyBoard(){
+    const counts=new Map();
+    for(const person of H.state.people){
+      const group=H.staffGroup(person);
+      if(group!=="civil" && group!=="reference")continue;
+      const position=H.quotaGroups.positions.find(slot=>slot.group===group && slot.title===person.position);
+      const rank=H.quotaGroups.ranks.find(slot=>slot.titles.includes(person.rank));
+      for(const slot of [position,rank]){
+        if(slot)counts.set(slot.key,(counts.get(slot.key)||0)+1);
+      }
     }
-    return '<p class="hint staff-note">点击岗位展开科室明细，可修改核定名额。空缺汇总各科室的正缺口，超配另列。未设置名额的科室暂不计入。</p>'+
-      section("职务空编",H.quotaGroups.positions)+section("职级空编",H.quotaGroups.ranks);
+    function section(title,category,slots){
+      const rows=slots.map(slot=>{
+        const quota=H.state.unitPostQuotas[slot.key];
+        const actual=counts.get(slot.key)||0;
+        const gap=quota==null?null:quota-actual;
+        const result=gap===null?"—":gap<0?'<span class="post-over">超配 '+(-gap)+'</span>':String(gap);
+        return '<tr data-vacancy="'+e(slot.key)+'"><th scope="row">'+e(slot.label)+'</th><td><button type="button" class="staff-edit" data-edit-unit="'+e(slot.key)+'" aria-label="设置'+e(slot.label)+'的单位名额">'+(quota==null?"未设置":quota)+'</button></td><td>'+actual+'</td><td data-vacant-total>'+result+'</td></tr>';
+      }).join("");
+      return '<section class="post-section"><h3>'+title+'</h3><table class="staff-table post-table" aria-label="'+title+'"><thead><tr><th scope="col">'+category+'</th><th scope="col">核定</th><th scope="col">实有</th><th scope="col">空缺</th></tr></thead><tbody>'+rows+'</tbody></table></section>';
+    }
+    return '<div class="unit-quota-head"><span>全单位</span><button type="button" class="secondary" id="edit-unit-quotas">设置单位名额</button></div>'+
+      '<p class="hint staff-note">空缺 = 全单位核定名额 − 对应实有人数。职级合计公务员与参公人员。</p>'+
+      section("职务空编","人员类别 / 职务",H.quotaGroups.positions)+section("职级空编","职级",H.quotaGroups.ranks);
   }
   function establishmentPanel(){
-    const stats=staffingStats();
     return '<section class="panel" id="establishment-panel" aria-labelledby="staff-heading"><div class="panel-head"><h2 id="staff-heading">编制分布</h2></div><div class="switches">'+
       [["departments","科室"],["vacancies","空编情况"]].map(([id,name])=>'<button data-staff-tab="'+id+'" aria-pressed="'+(staffTab===id)+'" class="chip">'+name+'</button>').join("")+
-      '</div>'+(staffTab==="departments"?staffingTable(stats):vacancyBoard(stats))+'</section>';
+      '</div>'+(staffTab==="departments"?staffingTable():vacancyBoard())+'</section>';
   }
   function overview(){
     const people=H.state.people, n=people.length, ages=people.map(p=>H.age(p)).filter(a=>a!==null&&Number.isFinite(a));
@@ -149,7 +124,9 @@
     click("ratio",()=>go("ratio"));
     main.querySelectorAll("[data-chart]").forEach(b=>b.onclick=()=>{chart=b.dataset.chart;overview();});
     main.querySelectorAll("[data-staff-tab]").forEach(b=>b.onclick=()=>{staffTab=b.dataset.staffTab;overview();main.querySelector("[data-staff-tab="+staffTab+"]").focus({preventScroll:true});});
-    main.querySelectorAll("[data-staff-edit]").forEach(b=>b.onclick=()=>deptForm(b.dataset.staffEdit,"overview",b.dataset.postKey));
+    main.querySelectorAll("[data-staff-edit]").forEach(b=>b.onclick=()=>deptForm(b.dataset.staffEdit,"overview"));
+    click("edit-unit-quotas",()=>unitQuotaForm());
+    main.querySelectorAll("[data-edit-unit]").forEach(b=>b.onclick=()=>unitQuotaForm(b.dataset.editUnit));
   }
   function attrValues(attr){
     const defaults={gender:["女","男"],education:["博士研究生","硕士研究生","本科","大专","其他"],category:["公务员（行政编）","参公事业编","事业编制","合同制聘用","劳务派遣","借调人员","退休人员"],ageBand:bands};
@@ -199,41 +176,60 @@
     main.querySelectorAll("[data-edit]").forEach(b=>b.onclick=()=>deptForm(b.dataset.edit));
     main.querySelectorAll("[data-person]").forEach(b=>b.onclick=()=>{window.showPerson(b.dataset.person,()=>go("org"));top();});
   }
-  function quotaFields(dept,title,slots){
-    const fields=slots.map(slot=>{
-      const n=dept && dept.postQuotas && dept.postQuotas[slot.key];
-      return '<label>'+e(slot.label)+'<input type="number" min="0" step="1" inputmode="numeric" data-quota-key="'+e(slot.key)+'" value="'+(n==null?'':e(n))+'" placeholder="未设置"></label>';
-    }).join("");
-    return '<fieldset class="quota-fields"><legend>'+title+'</legend><div class="fields">'+fields+'</div></fieldset>';
+  function unitQuotaForm(focusKey){
+    function fields(title,slots){
+      const inputs=slots.map(slot=>{
+        const value=H.state.unitPostQuotas[slot.key];
+        return '<label>'+e(slot.label)+'<input type="number" min="0" step="1" inputmode="numeric" data-quota-key="'+e(slot.key)+'" value="'+(value==null?"":value)+'" placeholder="未设置"></label>';
+      }).join("");
+      return '<fieldset class="quota-fields"><legend>'+title+'</legend><div class="fields">'+inputs+'</div></fieldset>';
+    }
+    main.innerHTML=backTitle("设置单位名额")+'<form class="panel" id="unit-quota-form"><p class="hint">填写全单位核定名额。未核定可留空，核定为零请填 0。</p>'+
+      fields("职务核定名额",H.quotaGroups.positions)+fields("职级核定名额",H.quotaGroups.ranks)+
+      '<div class="action-row"><button class="primary" type="submit">保存单位名额</button></div></form>';
+    const form=document.getElementById("unit-quota-form");
+    const inputs=[...form.querySelectorAll("[data-quota-key]")];
+    function returnToBoard(){
+      go("overview");
+      const source=focusKey?main.querySelector('[data-edit-unit="'+focusKey+'"]'):document.getElementById("edit-unit-quotas");
+      source.focus({preventScroll:true});
+      document.getElementById("establishment-panel").scrollIntoView({block:"start"});
+    }
+    H.subBack=()=>{if(allowNavigation())returnToBoard();};
+    click("local-back",H.subBack);top();
+    if(focusKey)inputs.find(input=>input.dataset.quotaKey===focusKey).focus();
+    form.onsubmit=async ev=>{
+      ev.preventDefault();
+      const saveButton=form.querySelector("[type=submit]");
+      if(saveButton.disabled)return;
+      const quotas={};
+      for(const input of inputs){
+        if(input.value==="")continue;
+        const value=Number(input.value);
+        if(!Number.isSafeInteger(value)||value<0){H.notify("核定名额须为非负整数");input.focus();return;}
+        quotas[input.dataset.quotaKey]=value;
+      }
+      H.state.unitPostQuotas=quotas;
+      saveButton.disabled=true;
+      try{
+        if(await H.save() && form.isConnected){H.notify("单位名额已保存");returnToBoard();}
+      }finally{saveButton.disabled=false;}
+    };
   }
-  function deptForm(id,returnPage="org",postKey){
+  function deptForm(id,returnPage="org"){
     const d=H.state.depts.find(x=>String(x.id)===String(id)), title=d?"编辑科室":"新增科室";
     const invalid=new Set(d?[String(d.id)]:[]);
     function blocked(x){let n=x;while(n){if(invalid.has(String(n.id)))return true;n=n.parentId&&H.state.depts.find(z=>String(z.id)===String(n.parentId));}return false;}
     main.innerHTML=backTitle(title)+'<form class="panel" id="dept-form"><div class="fields"><label class="wide">科室名称<input id="d-name" required maxlength="80" value="'+e(d?d.name:"")+'"></label><label class="wide">上级机构<select id="d-parent">'+option("","局机关（本级）",d&&d.parentId)+H.state.depts.filter(x=>!blocked(x)).map(x=>option(x.id,x.name,d&&d.parentId)).join("")+'</select></label><label class="wide">科室编制总数<input id="d-quota" type="number" min="0" step="1" inputmode="numeric" placeholder="未设置" value="'+e(d&&d.quota!=null?d.quota:"")+'"></label></div>'+
-      '<p class="hint staff-note">核定名额可留空。没有名额请填 0。</p>'+quotaFields(d,"职务核定名额",H.quotaGroups.positions)+quotaFields(d,"职级核定名额",H.quotaGroups.ranks)+
       '<div class="action-row"><button class="primary" type="submit">保存科室</button>'+(d?'<button type="button" id="delete-dept" class="plain-btn danger">删除科室</button>':'')+'</div></form>';
     const quotaInput=document.getElementById("d-quota");
     H.subBack=()=>{if(allowNavigation())go(returnPage);};click("local-back",H.subBack);top();
-    const postInputs=[...main.querySelectorAll("[data-quota-key]")];
-    if(postKey){
-      const focusInput=postInputs.find(input=>input.dataset.quotaKey===postKey);
-      if(focusInput){focusInput.focus({preventScroll:true});focusInput.scrollIntoView({block:"center"});}
-    }
     document.getElementById("dept-form").onsubmit=ev=>{
       ev.preventDefault();const name=document.getElementById("d-name").value.trim(),parentId=document.getElementById("d-parent").value;
       if(!name||H.state.depts.some(x=>x!==d&&x.name===name)){H.notify("请填写不重复的科室名称");return;}
       const quota=quotaInput.value===""?null:Number(quotaInput.value);
       if(quota!==null&&(!Number.isSafeInteger(quota)||quota<0)){H.notify("编制数须为非负整数");return;}
-      const postQuotas={...(d && d.postQuotas)};
-      for(const input of postInputs){
-        const key=input.dataset.quotaKey;
-        if(input.value===""){delete postQuotas[key];continue;}
-        const n=Number(input.value);
-        if(!Number.isSafeInteger(n)||n<0){H.notify("核定名额须为非负整数");input.focus();return;}
-        postQuotas[key]=n;
-      }
-      if(d)Object.assign(d,{name,parentId,quota,postQuotas});else H.state.depts.push({id:"d"+Date.now().toString(36)+Math.random().toString(36).slice(2,6),name,parentId,quota,postQuotas});
+      if(d)Object.assign(d,{name,parentId,quota});else H.state.depts.push({id:"d"+Date.now().toString(36)+Math.random().toString(36).slice(2,6),name,parentId,quota});
       if(!H.save()){go(returnPage);return;}H.notify("科室已保存");go(returnPage);
     };
     click("delete-dept",()=>{
@@ -266,7 +262,7 @@
     H.subBack=()=>go("overview");click("local-back",H.subBack);
     click("export",()=>{
       if(!window.LocalFiles){H.notify("无法打开文件下载，请重新打开应用");return;}
-      const out=H.isUnreadable()?H.raw():JSON.stringify({format:"hr-local-ledger",version:3,exportedAt:new Date().toISOString(),data:H.state});
+      const out=H.isUnreadable()?H.raw():JSON.stringify({format:"hr-local-ledger",version:4,exportedAt:new Date().toISOString(),data:H.state});
       window.LocalFiles.exportBackup(out);
     });
     click("import",()=>{
@@ -278,7 +274,7 @@
   window.onBackupFile=text=>{
     try{
       const file=JSON.parse(text);
-      if(!file||file.format!=="hr-local-ledger"||![1,2,3].includes(file.version))throw Error("请选择本应用导出的第 1、2 或 3 版 JSON 备份");
+      if(!file||file.format!=="hr-local-ledger"||![1,2,3,4].includes(file.version))throw Error("请选择本应用导出的第 1 至 4 版 JSON 备份");
       H.validate(file.data);
       const d=file.data;
       if(confirm("用备份中的 "+d.people.length+" 人、"+d.depts.length+" 个科室、"+d.policies.length+" 条规则替换当前台账？")){H.restore(d);orgOpen.clear();go("overview");H.notify("台账已恢复");}
