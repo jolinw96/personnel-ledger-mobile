@@ -45,3 +45,5 @@
 .pe-history-roles{margin:5px 0;gap:8px}
 .pe-history-roles dt{font-size:12px;color:var(--muted)}
 .pe-history-roles dd{margin:0;font-size:15px;font-weight:600;overflow-wrap:anywhere}
+.pe-change-dates{display:grid;gap:8px}
+.pe-timeline [data-edit-current-role]{padding:6px 0;min-height:36px;font-size:13px}

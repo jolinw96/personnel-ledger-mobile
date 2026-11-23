@@ -296,6 +296,18 @@
           }
         }
       }
+      if(d && !establishment && nameChanged){
+        for(const person of H.state.people){
+          if(String(person.deptId)!==String(d.id))continue;
+          for(const row of H.roleTimeline(person)){
+            if(!row.timelineCurrent || !Number.isInteger(row.historyIndex))continue;
+            for(const index of row.historyIndices||[row.historyIndex]){
+              const entry=person.history[index];
+              if(entry.actualDeptName===d.name)entry.actualDeptName=name;
+            }
+          }
+        }
+      }
       if(d)Object.assign(d,changes);
       else directory.push({id:(establishment?"u":"d")+Date.now().toString(36)+Math.random().toString(36).slice(2,6),...changes});
       if(!H.save()){leave();return;}H.notify(label+"已保存");leave();
@@ -307,13 +319,21 @@
       const parentId=d.parentId==null?"":d.parentId;
       const parent=directory.find(x=>String(x.id)===String(parentId));
       const message=["删除"+label+"「"+d.name+"」？"];
-      if(affected.length)message.push(affected.length+" 人的"+label+"将变为未分配，原归属将保存到过往经历。");
+      if(affected.length)message.push(affected.length+" 人的"+label+"将变为未分配，原科室和任职期间将记入经历。");
       if(children.length&&!establishment)message.push(children.length+" 个直属下级将移到「"+(parent?parent.name:"局机关（本级）")+"」下。");
       if(!confirm(message.join("\n")))return;
-      for(const p of affected){
-        H.rememberDept(p,p,"");
-        p.deptId="";p.deptSince="";
-      }
+      const revised=new Map();
+      const effective=H.today();
+      try{
+        for(const previous of affected){
+          const draft=JSON.parse(JSON.stringify(previous));
+          draft.deptId="";draft.deptSince="";
+          H.rememberDept(draft,previous,(previous.deptSince||"")<=effective?effective:"");
+          H.syncRoleHistory(draft,previous,{mode:"change",dates:{dept:effective}});
+          revised.set(previous,draft);
+        }
+      }catch(error){H.notify(error.message);return;}
+      if(revised.size)H.state.people=H.state.people.map(person=>revised.get(person)||person);
       children.forEach(x=>{x.parentId=parentId;});
       directory.splice(directory.indexOf(d),1);
       if(establishment)Object.keys(postFields).forEach(field=>H.clearUnitTargetOverride(d.categoryGroup,field));

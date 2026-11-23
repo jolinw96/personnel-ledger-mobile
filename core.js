@@ -167,11 +167,11 @@
     const typed=typeof entry.type==="string" && typeof entry.title==="string";
     if(typeof position!=="string" || typeof rank!=="string")throw Error("任职经历的职务或职级无效");
     if(typed && position===previous.position && rank===previous.rank)return entry;
-    if(!position && !rank && !previous.otherType && !previous.otherTitle)throw Error("请选择任职经历的职务或职级");
+    if(!position && !rank && !previous.otherType && !previous.otherTitle && !entry.autoRoleHistory)throw Error("请选择任职经历的职务或职级");
     entry.position=position;
     entry.rank=rank;
     if(!previous.otherType && !previous.otherTitle){
-      entry.type=position?"职务":"职级";
+      entry.type=position?"职务":rank?"职级":"";
       entry.title=position||rank;
     }
     return entry;
@@ -179,16 +179,144 @@
   function validRoleEntry(entry){
     if(!entry || typeof entry!=="object" || Array.isArray(entry) || !isDate(entry.start) || !isDate(entry.end))return false;
     if(entry.actualDeptName!=null && typeof entry.actualDeptName!=="string")return false;
+    if(has(entry,"autoRoleHistory") && typeof entry.autoRoleHistory!=="boolean")return false;
     if(["position","rank"].some(k=>has(entry,k) && typeof entry[k]!=="string"))return false;
     if(has(entry,"type") || has(entry,"title")){
       if(typeof entry.type!=="string" || typeof entry.title!=="string")return false;
       if(!has(entry,"position") && !has(entry,"rank"))return true;
       const values=roleHistoryValues(entry);
-      return !!(values.position || values.rank || values.otherType || values.otherTitle);
+      return !!(values.position || values.rank || values.otherType || values.otherTitle || (entry.autoRoleHistory && entry.actualDeptName));
     }
     if(!entry.position && !entry.rank)return false;
     updateRoleHistory(entry,entry.position||"",entry.rank||"");
     return true;
+  }
+  const roleAxes=["position","rank"];
+  function priorDay(day){
+    const date=new Date(day+"T00:00:00Z");
+    date.setUTCDate(date.getUTCDate()-1);
+    return date.toISOString().slice(0,10);
+  }
+  function workName(person){
+    return person.deptId==null || person.deptId===""?"":HR.deptName(person.deptId);
+  }
+  function roleSegments(before,after=before,dates={},previousDeptName=workName(before)){
+    const changes=Object.values(dates).sort();
+    const first=changes[0]||"",last=changes[changes.length-1]||"";
+    const floor=before.roleTimelineSince||"";
+    const lower=[floor,before.deptSince||""].sort()[1];
+    const unknownRoles=roleAxes.filter(k=>before[k] && !before[k+"Since"] && !floor);
+    const unknownDept=!!(previousDeptName && !before.deptSince && !floor);
+    const rows=[];
+    function append(start,end,dept,position,rank){
+      if(!dept && !position && !rank)return;
+      rows.push({start,end,actualDeptName:dept,position,rank,
+        type:position?"职务":rank?"职级":"",title:position||rank,autoRoleHistory:true});
+    }
+    // Unknown appointments are observations, not evidence that a title was held
+    // on the date of another appointment or the date of arrival.
+    if(unknownRoles.length || unknownDept){
+      const dept=first && before.deptSince && first<=before.deptSince?"":previousDeptName;
+      append("",first?priorDay(first):"",dept,
+        unknownRoles.includes("position")?before.position:"",unknownRoles.includes("rank")?before.rank:"");
+    }
+    const starts=roleAxes.filter(axis=>before[axis]).map(axis=>before[axis+"Since"]);
+    const points=[...new Set([lower,...starts,...changes].filter(day=>day && day>=lower && (!last || day<=last)))].sort();
+    for(let i=0;i<points.length;i++){
+      const start=points[i];
+      if(start===last)break;
+      const confirmed=!!first && start>=first;
+      const dept=dates.dept && start>=dates.dept?workName(after):unknownDept&&!confirmed?"":previousDeptName;
+      const values=roleAxes.map(axis=>{
+        if(dates[axis] && start>=dates[axis])return after[axis]||"";
+        const since=before[axis+"Since"];
+        if(since)return since<=start?before[axis]||"":"";
+        return !floor && !confirmed?"":before[axis]||"";
+      });
+      const next=points[i+1];
+      append(start,next?priorDay(next):"",dept,values[0],values[1]);
+    }
+    return rows;
+  }
+  function sameRolePeriod(a,b){
+    const left=roleHistoryValues(a),right=roleHistoryValues(b);
+    return !left.otherType && !left.otherTitle && (a.start||"")===(b.start||"") &&
+      (a.actualDeptName||"")===(b.actualDeptName||"") &&
+      left.position===right.position && left.rank===right.rank;
+  }
+  function matchesRecordedRole(record,segment){
+    if(sameRolePeriod(record,segment))return true;
+    if(!record.start || record.start!==segment.start || !record.actualDeptName || record.actualDeptName!==segment.actualDeptName)return false;
+    const values=roleHistoryValues(record);
+    return !values.otherType && !values.otherTitle && !!(values.position || values.rank) &&
+      (!values.position || values.position===segment.position) && (!values.rank || values.rank===segment.rank);
+  }
+  function roleTimeline(person){
+    const rows=(person.history||[]).map((entry,historyIndex)=>({...entry,historyIndex,timelineCurrent:false,timelineDerived:false}));
+    const combined=new Set();
+    for(const current of roleSegments(person).filter(entry=>!entry.end)){
+      const matches=rows.filter(entry=>!entry.end && !entry.roleEndUnknown && !entry.timelineCurrent && !combined.has(entry) && matchesRecordedRole(entry,current));
+      if(matches.length){
+        const first=matches[0];
+        first.timelineCurrent=true;
+        first.historyIndices=matches.map(entry=>entry.historyIndex);
+        if(!sameRolePeriod(first,current))updateRoleHistory(first,current.position,current.rank);
+        for(const entry of matches.slice(1))combined.add(entry);
+      }else rows.push({...current,timelineCurrent:true,timelineDerived:true});
+    }
+    return rows.filter(r=>!combined.has(r)).sort((a,b)=>Number(b.timelineCurrent)-Number(a.timelineCurrent) || (b.start||"").localeCompare(a.start||""));
+  }
+  function syncRoleHistory(draft,previous,options={}){
+    if(!previous)return;
+    const dates={},provided=options.dates||{};
+    for(const key of ["dept",...roleAxes]){
+      const field=key==="dept"?"deptId":key;
+      if(String(draft[field]??"")===String(previous[field]??""))continue;
+      if(options.mode==="change"){
+        const date=provided[key];
+        if(!date || !isDate(date) || date>today())throw Error("请核对变更生效日期");
+        if(previous.roleTimelineSince && date<previous.roleTimelineSince)throw Error("变更日期早于最近一次已记录的变动，请核对历史任期");
+        dates[key]=date;
+      }
+    }
+    const records=[...(draft.history||[])];
+    if(Object.keys(dates).length){
+      const sortedDates=Object.values(dates).sort();
+      const last=sortedDates[sortedDates.length-1];
+      for(const part of roleSegments(previous,draft,dates,options.previousDeptName)){
+        if(!part.end)continue;
+        const matches=records.filter(r=>matchesRecordedRole(r,part) && (r.end===part.end || (!r.end && !r.roleEndUnknown)));
+        if(!matches.length){records.push(part);continue;}
+        for(const original of matches){
+          const entry={...original,end:part.end};
+          if(matches.length===1 && !sameRolePeriod(original,part))updateRoleHistory(entry,part.position,part.rank);
+          records[records.indexOf(original)]=entry;
+        }
+      }
+      draft.history=records;
+      draft.roleTimelineSince=last;
+    }else if(options.mode==="correct"){
+      const before=roleSegments(previous).filter(r=>!r.end);
+      const after=roleSegments(draft).filter(r=>!r.end);
+      for(const source of before){
+        if(after.some(r=>sameRolePeriod(r,source)))continue;
+        const target=after.length===1?after[0]:after.find(r=>
+          !!r.position===!!source.position && !!r.rank===!!source.rank);
+        const matches=records.filter(r=>!r.end && !r.roleEndUnknown && matchesRecordedRole(r,source));
+        for(const original of matches){
+          const index=records.indexOf(original);
+          if(!target){records[index]={...original,roleEndUnknown:true};continue;}
+          const changed={...original,start:target.start,actualDeptName:target.actualDeptName};
+          const prior=roleHistoryValues(original);
+          const position=matches.length===1||prior.position?target.position:"";
+          const rank=matches.length===1||prior.rank?target.rank:"";
+          if(!position && !rank)changed.autoRoleHistory=true;
+          updateRoleHistory(changed,position,rank);
+          records[index]=changed;
+        }
+      }
+      if(records.some((r,i)=>r!==draft.history[i]))draft.history=records;
+    }
   }
   const isMonth = value => typeof value==="string" && /^[0-9]{4}-(0[1-9]|1[0-2])$/.test(value);
   function historyMonths(record){
@@ -332,6 +460,7 @@
       )))bad();
       if(["gender","education","category","rank","position"].some(k=>p[k]!=null&&typeof p[k]!=="string"))bad();
       if(!isMonth(p.birth)&&!isDate(p.birth))bad();
+      if(!isDate(p.roleTimelineSince))bad();
       if(["ageAsOf","deptSince","rankSince","positionSince"].some(k=>!isDate(p[k])))bad();
       if(p.age!=null&&p.age!==""&&(!Number.isInteger(Number(p.age))||+p.age<0||+p.age>130))bad();
       if(p.history!=null && (!Array.isArray(p.history)||!p.history.every(validRoleEntry)))bad();
@@ -407,5 +536,5 @@
       const n=Number(when.slice(0,4))-Number(p.birth.slice(0,4))-(when.slice(5,7)<p.birth.slice(5,7)?1:0);
       return Number.isFinite(n)&&n>=0?n:null;
     },isUnreadable:()=>unreadable, raw:()=>localStorage.getItem(key)};
-  Object.assign(HR,{jobTitles,jobChoices,roleHistoryValues,updateRoleHistory,isMonth,historyMonths,updateHistoryMonths,quotaGroups,staffGroup,unitTarget,clearUnitTargetOverride});
+  Object.assign(HR,{jobTitles,jobChoices,roleHistoryValues,updateRoleHistory,roleTimeline,syncRoleHistory,isMonth,historyMonths,updateHistoryMonths,quotaGroups,staffGroup,unitTarget,clearUnitTargetOverride});
 })();

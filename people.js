@@ -116,10 +116,6 @@
     renderResults();
   }
   function detailField(label,value){return '<div><dt>'+label+'</dt><dd>'+pretty(value)+'</dd></div>';}
-  function priorRoles(record){
-    const role=(title,since)=>esc(title)+(since?'（'+esc(since)+' 起）':'');
-    return [record.position?'原职务 '+role(record.position,record.positionSince):'',record.rank?'原职级 '+role(record.rank,record.rankSince):''].filter(Boolean).join(' · ');
-  }
   function pastDepartment({record,index,months}){
     const monthText=month=>month.replace('-','.');
     const period=(months.start?monthText(months.start):'起月未登记')+'—'+(months.end?monthText(months.end):'止月未登记');
@@ -194,7 +190,7 @@
     if(!p){finish();return;}
     h().subBack = finish;
     const a = h().age(p);
-    const timeline = [...(p.history || [])].sort((x,y)=>String(y.start).localeCompare(String(x.start)));
+    const timeline=h().roleTimeline(p);
     const pastDepts=(p.deptHistory||[]).map((record,index)=>({record,index,months:h().historyMonths(record)}));
     pastDepts.sort((a,b)=>b.months.end.localeCompare(a.months.end)||b.months.start.localeCompare(a.months.start)||b.index-a.index);
     view().innerHTML = backButton('返回')+'<div class="heading"><h1>人员档案</h1>'+button('pe-edit','编辑','secondary')+'</div>'+
@@ -209,6 +205,8 @@
       const edit=event.target.closest('[data-edit-dept-history]');
       if(edit)editDepartmentHistory(p.id,Number(edit.dataset.editDeptHistory),finish);
     });
+    const editCurrent=at('[data-edit-current-role]');
+    if(editCurrent)editCurrent.onclick=()=>{openPerson(p.id,finish);at('[name=position]').focus();};
     on('#pe-back','click',finish);on('#pe-edit','click',()=>openPerson(p.id,finish));
     const keep = ()=>{at('#pe-confirm').hidden=true;at('#pe-delete').hidden=false;h().subBack=finish;at('#pe-delete').focus();};
     on('#pe-delete','click',()=>{at('#pe-confirm').hidden=false;at('#pe-delete').hidden=true;h().subBack=keep;at('#pe-keep').focus();});
@@ -233,9 +231,9 @@
   }
   function manualHistoryDetail(entry){
     const values=h().roleHistoryValues(entry);
-    return '<li><span>'+esc(entry.start||'起始日期未登记')+' 至 '+esc(entry.end||'今')+'</span>'+
+    return '<li'+(entry.timelineCurrent?' data-current-role':'')+'><span>'+esc(entry.start||'起始日期未登记')+(entry.end?' 至 '+esc(entry.end):entry.roleEndUnknown?' · 结束日期未登记':' 至今')+(entry.timelineCurrent?' · 当前任职':'')+'</span>'+
       '<dl class="pe-history-roles">'+detailField('职务',values.position)+detailField('职级',values.rank)+'</dl>'+
-      otherHistoryRole(values)+'<span>实际工作科室 '+pretty(entry.actualDeptName)+'</span></li>';
+      otherHistoryRole(values)+'<span>实际工作科室 '+pretty(entry.actualDeptName)+'</span>'+(entry.timelineCurrent?'<button type="button" class="txt" data-edit-current-role>编辑当前任职</button>':'')+'</li>';
   }
   function historyFields(item={},index='') {
     const values=h().roleHistoryValues(item);
@@ -248,9 +246,14 @@
       select('historyRank','职级',roleOptions('rank'),values.rank,'请选择')+
       input('historyActualDept','当时实际工作科室',item.actualDeptName,'list="pe-history-depts" maxlength="80" placeholder="选择或填写当时名称"')+
       input('historyStart','起始日期',item.start,dateAttr(item.start)+(index===''||item.start?' required':''))+
-      input('historyEnd','结束日期（至今可留空）',item.end,dateAttr(item.end))+'</div></div>';
+      input('historyEnd',item.roleEndUnknown?'结束日期（原记录未登记）':'结束日期（至今可留空）',item.end,dateAttr(item.end))+'</div></div>';
   }
-  function confirmTransfer(previous,draft){
+  const changeAxes=[
+    {key:'dept',field:'deptId',since:'deptSince',label:'实际工作科室',sinceLabel:'实际到科室时间',input:'pe-transfer-date',dateLabel:'调动生效日期'},
+    {key:'position',field:'position',since:'positionSince',label:'职务',sinceLabel:'任现职务时间',input:'pe-transfer-position-date',dateLabel:'职务变更生效日期'},
+    {key:'rank',field:'rank',since:'rankSince',label:'职级',sinceLabel:'任现职级时间',input:'pe-transfer-rank-date',dateLabel:'职级变更生效日期'}
+  ];
+  function confirmTransfer(previous,draft,axes,prefill={}){
     const dialog=document.createElement('dialog');
     dialog.id='pe-transfer';
     dialog.className='pe-transfer';
@@ -259,22 +262,23 @@
     dialog.setAttribute('aria-labelledby','pe-transfer-heading');
     dialog.setAttribute('aria-describedby','pe-transfer-route');
     const today=h().today();
-    const roles=priorRoles(previous);
-    const from=esc(h().deptName(previous.deptId)),to=esc(h().deptName(draft.deptId));
-    const assigned=draft.deptId!=null && draft.deptId!=='';
-    const correctionDate=assigned?draft.deptSince||previous.deptSince||'':'';
-    const route='<span>实际工作科室　'+from+' → '+to+'</span>';
-    const dateField='<label>调动生效日期<input id="pe-transfer-date" type="date" required max="'+today+'" min="'+esc(previous.deptSince||'')+'" value="'+esc(draft.deptSince||today)+'"></label>';
-    const correction=assigned?'实际到科室时间为'+pretty(correctionDate):'清空实际到科室时间';
-    dialog.innerHTML='<div class="panel pe-transfer-card"><h2 tabindex="-1" id="pe-transfer-heading">确认科室变更</h2>'+
-      '<p id="pe-transfer-route"><b>'+esc(draft.name)+'</b>'+route+'</p>'+
-      '<div class="pe-transfer-summary"><h3>将归入过往经历</h3><p>实际工作科室 '+from+(previous.deptSince?'（'+esc(previous.deptSince)+' 起）':'')+'</p>'+(roles?'<p>'+roles+'</p>':'')+'</div>'+
-      dateField+
-      '<p role="alert" id="pe-transfer-error" class="pe-form-error" hidden></p>'+
-      button('pe-transfer-record','确认调动并归档','primary')+
-      '<p class="hint">如果是测试或录入错误，可以只更正科室。'+
-      '更正后'+correction+'。</p>'+
-      button('pe-transfer-correct','仅更正科室')+button('pe-transfer-back','返回修改','plain-btn')+'</div>';
+    const deptChange=axes.some(axis=>axis.key==='dept');
+    const dateDefault=(deptChange&&draft.deptSince)||today;
+    const earliest=axis=>[previous[axis.since]||'',previous.roleTimelineSince||''].sort()[1];
+    const display=(record,axis)=>axis.key==='dept'?h().deptName(record.deptId):record[axis.field]||'未登记';
+    const routes=axes.map(axis=>'<span>'+axis.label+'　'+esc(display(previous,axis))+' → '+esc(display(draft,axis))+'</span>').join('');
+    const fields=axes.map(axis=>{
+      const date=prefill[axis.key]||draft[axis.since]||dateDefault;
+      return '<label>'+axis.dateLabel+'<input id="'+axis.input+'" type="date" required max="'+today+'" min="'+esc(earliest(axis))+'" value="'+esc(date)+'"></label>';
+    }).join('');
+    const info=deptChange&&String(previous.deptId??'')?'原工作科室「'+esc(h().deptName(previous.deptId))+'」也会记入过往经历。':'';
+    dialog.innerHTML='<div class="panel pe-transfer-card"><h2 tabindex="-1" id="pe-transfer-heading">'+(deptChange&&axes.length===1?'确认科室变更':'确认任职变更')+'</h2>'+
+      '<p id="pe-transfer-route"><b>'+esc(draft.name)+'</b>'+routes+'</p>'+
+      '<div class="pe-transfer-summary"><p>按生效日期衔接前后任职经历。'+info+'</p></div>'+
+      '<div class="pe-change-dates">'+fields+'</div><p role="alert" id="pe-transfer-error" class="pe-form-error" hidden></p>'+
+      button('pe-transfer-record','确认变动并记录经历','primary')+
+      '<p class="hint">测试或录入有误时，可仅更正当前资料。</p>'+
+      button('pe-transfer-correct','仅更正资料')+button('pe-transfer-back','返回修改','plain-btn')+'</div>';
     view().appendChild(dialog);
     return new Promise(resolve=>{
       const originalBack=h().subBack;
@@ -293,24 +297,35 @@
       h().subBack=()=>close(null);
       const error=dialog.querySelector('#pe-transfer-error');
       dialog.querySelector('#pe-transfer-record').onclick=()=>{
-        const input=dialog.querySelector('#pe-transfer-date');
-        const date=input.value;
-        if(!date || !input.validity.valid || date>today || date<(previous.deptSince||'') || (draft.birth && date.slice(0,7)<draft.birth)){
-          error.textContent='调动日期不能早于原到任时间或出生月份，也不能晚于今天。';
-          error.hidden=false;input.focus();return;
+        const dates={};
+        for(const axis of axes){
+          const input=dialog.querySelector('#'+axis.input);
+          const value=input.value;
+          if(!value||!input.validity.valid||value>today||value<earliest(axis)||(draft.birth&&value.slice(0,7)<draft.birth)){
+            error.textContent=axis.dateLabel+'须为'+(earliest(axis)?earliest(axis)+' 至今天':'今天或更早的日期')+'，且不能早于出生月份。';
+            error.hidden=false;input.focus();return;
+          }
+          dates[axis.key]=value;
         }
-        close({record:true,date});
+        close({record:true,dates});
       };
-      dialog.oninput=()=>{error.hidden=true;};
-      dialog.querySelector('#pe-transfer-correct').onclick=()=>close({record:false,date:correctionDate});
+      const untouchedDates=new Set(axes.filter(axis=>axis.key!=='dept'&&!draft[axis.since]&&!prefill[axis.key]).map(axis=>axis.input));
+      function dateChanged(event){
+        error.hidden=true;
+        if(event.target.id==='pe-transfer-date'){
+          untouchedDates.forEach(id=>{dialog.querySelector('#'+id).value=event.target.value;});
+        }else untouchedDates.delete(event.target.id);
+      }
+      dialog.oninput=dateChanged;dialog.onchange=dateChanged;
+      dialog.querySelector('#pe-transfer-correct').onclick=()=>close({record:false});
       dialog.querySelector('#pe-transfer-back').onclick=()=>close(null);
       dialog.oncancel=event=>{event.preventDefault();close(null);};
       dialog.onkeydown=event=>{
         if(event.key==='Escape'){event.preventDefault();close(null);}
-        if(native || event.key!=='Tab')return;
-        const first=dialog.querySelector('input'), last=dialog.querySelector('#pe-transfer-back');
-        if(event.shiftKey && (document.activeElement===first || document.activeElement===dialog.querySelector('h2'))){event.preventDefault();last.focus();}
-        if(!event.shiftKey && document.activeElement===last){event.preventDefault();first.focus();}
+        if(native||event.key!=='Tab')return;
+        const first=dialog.querySelector('input'),last=dialog.querySelector('#pe-transfer-back');
+        if(event.shiftKey&&(document.activeElement===first||document.activeElement===dialog.querySelector('h2'))){event.preventDefault();last.focus();}
+        if(!event.shiftKey&&document.activeElement===last){event.preventDefault();first.focus();}
       };
       if(native)dialog.showModal();else dialog.setAttribute('open','');
       dialog.querySelector('h2').focus();
@@ -346,7 +361,7 @@
       '<section class="panel pe-confirm" id="pe-discard" hidden><p>放弃尚未保存的修改？</p><div class="action-row">'+button('pe-resume','继续编辑')+button('pe-leave','放弃修改','pe-destructive')+'</div></section>';
     const form=at('#pe-form');
     const field=key=>form.elements.namedItem(key);
-    let dirty=false, saving=false;
+    let dirty=false, saving=false, lastDecision=null;
     const closeDiscard=()=>{at('#pe-discard').hidden=true;h().subBack=tryLeave;};
     function tryLeave(){
       if(!dirty){leave();return;}
@@ -362,23 +377,24 @@
       }
     };
     function syncHistory(){at('#pe-history-empty').hidden=!!at('.pe-history-row');}
-    function syncDept() {
-      const selected=field('deptId').value;
-      const since=field('deptSince');
-      const start=selected && selected===originalId?p.deptSince||'':'';
-      if(since.value!==start || since.defaultValue!==start){
-        // A reused WebKit date picker can remain invalid after its old date is cleared.
-        since.parentElement.outerHTML=input('deptSince','实际到科室时间',start,date);
+    function syncSince(axis){
+      const selected=field(axis.field).value;
+      const since=field(axis.since);
+      const start=selected&&selected===String(p[axis.field]??'')?p[axis.since]||'':'';
+      if(since.value!==start||since.defaultValue!==start){
+        // Recreate the input so WebKit clears its previous date-picker state.
+        since.parentElement.outerHTML=input(axis.since,axis.sinceLabel,start,date);
       }
-      field('deptSince').disabled=!selected;
+      field(axis.since).disabled=!selected;
     }
-    syncMode();syncHistory();syncDept();
+    syncMode();syncHistory();changeAxes.forEach(syncSince);
     function setDirty(){dirty=true;at('#pe-error').hidden=true;}
     form.addEventListener('input',setDirty);
     form.addEventListener('change',e=>{
       setDirty();
       if(e.target.name==='ageMode')syncMode();
-      if(e.target.name==='deptId')syncDept();
+      const axis=changeAxes.find(axis=>axis.field===e.target.name);
+      if(axis)syncSince(axis);
       if(['education','category'].includes(e.target.name)){
         const other=field(e.target.name+'Other');
         other.disabled=e.target.value!=='__custom__';other.required=!other.disabled;other.parentElement.hidden=other.disabled;
@@ -436,7 +452,7 @@
           if(start&&end&&end<start)return invalid(el('End'),'结束日期不能早于起始日期。');
         }
         if(startChanged)entry.start=start;
-        if(endChanged)entry.end=end;
+        if(endChanged){entry.end=end;if(end)delete entry.roleEndUnknown;}
         const actual=el('ActualDept').value.trim();
         if(actual!==String(original.actualDeptName||'').trim()){
           if(actual)entry.actualDeptName=actual;else delete entry.actualDeptName;
@@ -445,14 +461,38 @@
       }
       saving=true;
       try{
-        if(originalId!=='' && String(data.deptId)!==originalId){
-          const choice=await confirmTransfer(p,data);
-          if(!choice || !form.isConnected)return;
-          data.deptSince=data.deptId!==''?choice.date:'';
-          if(data.birth && data.deptSince && data.deptSince.slice(0,7)<data.birth)return invalid(field('deptSince'),'实际到科室时间不能早于出生月份，请修改后再保存。');
-          if(choice.record)h().rememberDept(data,p,choice.date);
-        }
         if(existing){
+          const axes=changeAxes.filter(axis=>String(data[axis.field]??'')!==String(p[axis.field]??''));
+          const signature=JSON.stringify(axes.map(axis=>[axis.key,data[axis.field],data[axis.since]]));
+          const prefill=lastDecision?.signature===signature?lastDecision.dates:{};
+          const choice=axes.length?await confirmTransfer(p,data,axes,prefill):{record:false};
+          if(!choice||!form.isConnected)return;
+          lastDecision=choice.record?{signature,dates:choice.dates}:null;
+          for(const axis of axes){
+            const active=String(data[axis.field]??'')!=='';
+            data[axis.since]=active?(choice.record?choice.dates[axis.key]:data[axis.since]||p[axis.since]||''):'';
+          }
+          if(data.birth){
+            const early=axes.find(axis=>data[axis.since]&&data[axis.since].slice(0,7)<data.birth);
+            if(early)return invalid(field(early.since),early.sinceLabel+'不能早于出生月份。');
+          }
+          try{
+            h().syncRoleHistory(data,p,{mode:choice.record?'change':'correct',dates:choice.dates||{}});
+          }catch(error){
+            return invalid(field('deptId'),error.message);
+          }
+          if(choice.record&&choice.dates.dept&&originalId){
+            const departure={...p},move=choice.dates.dept;
+            for(const key of ['position','rank']){
+              const since=key+'Since';
+              if(choice.dates[key]&&choice.dates[key]<move){
+                departure[key]=data[key];departure[since]=data[since];
+              }else if(p[since]&&p[since]>=move){
+                departure[key]='';departure[since]='';
+              }
+            }
+            h().rememberDept(data,departure,move);
+          }
           const index=people().findIndex(i=>i.id===existing.id);
           if(index<0){h().notify('该档案已被删除');finish();return;}
           people()[index]=data;
