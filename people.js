@@ -222,7 +222,9 @@
       '<section class="panel pe-identity"><div class="pe-sign"><strong>'+esc(p.name)+'</strong>'+workDepartment(p)+'</div><dl class="pe-details">'+
       detailField('性别',p.gender)+detailField('年龄',a == null || a === '' ? '' : a+' 岁')+
       detailField(p.birth?'出生年月':'年龄登记日期',p.birth || p.ageAsOf)+detailField('学历',p.education)+detailField('人员类别',p.category)+(p.deptId!=null&&p.deptId!==''?detailField('实际到科室时间',p.deptSince):'')+
-      detailField('现任职务',p.position)+detailField('任现职务时间',p.positionSince)+detailField('现职级',p.rank)+detailField('任现职级时间',p.rankSince)+'</dl></section>'+
+      detailField('现任职务',p.position)+detailField('任现职务时间',p.positionSince)+detailField('现职级',p.rank)+
+      (h().separateRankEligible(p.rank)?'<div data-rank-separate><dt>是否单列</dt><dd>'+(h().separateRank(p)?'是':'否')+'</dd></div>':'')+
+      detailField('任现职级时间',p.rankSince)+'</dl></section>'+
       '<section class="panel" id="pe-resume"><div class="panel-head"><h2 tabindex="-1">个人简历</h2>'+button('pe-add-resume',icon('add')+'添加经历','secondary')+'</div>'+
       (lines?'<ol class="pe-resume-list">'+lines+'</ol>':'<p class="pe-muted">尚未登记经历。</p>')+'</section>'+
       button('pe-delete','删除该档案','plain-btn danger')+'<div class="panel pe-confirm" id="pe-confirm" hidden><p>删除“'+esc(p.name)+'”及其个人简历？此操作无法撤销。</p><div class="action-row">'+button('pe-keep','保留档案')+button('pe-remove','确认删除','pe-destructive')+'</div></div>';
@@ -387,7 +389,10 @@
       select('deptId','实际工作科室',departments,p.deptId,'未分配实际工作科室')+
       input('deptSince','实际到科室时间',p.deptSince,date)+'</div></section>'+
       '<section class="panel"><h2>当前任职</h2><div class="fields pe-form-fields">'+select('position','现任职务',h().jobChoices('position',p.position),p.position,'未登记')+
-      input('positionSince','任现职务时间',p.positionSince,date)+select('rank','现职级',h().jobChoices('rank',p.rank),p.rank,'未登记')+input('rankSince','任现职级时间',p.rankSince,date)+
+      input('positionSince','任现职务时间',p.positionSince,date)+
+      select('rank','现职级',h().jobChoices('rank',p.rank),p.rank,'未登记')+
+      '<div class="pe-rank-mark"><label><input id="pe-rank-separate" name="rankSeparate" type="checkbox" aria-describedby="pe-rank-hint">是否单列</label>'+
+      '<small class="hint" id="pe-rank-hint"></small></div>'+input('rankSince','任现职级时间',p.rankSince,date)+
       '</div></section><section class="panel"><div class="panel-head"><h2>简历经历</h2>'+button('pe-add-history',icon('add')+'添加经历','secondary')+
       '</div>'+historyDeptNames()+'<div id="pe-history">'+manual+'</div><p class="pe-muted" id="pe-history-empty">同一段经历可同时登记职务和职级。</p></section>'+
       '<p role="alert" class="pe-form-error" id="pe-error" hidden></p><div class="pe-save"><button type="submit" class="primary">保存档案</button>'+button('pe-cancel','取消')+'</div></form>'+
@@ -423,7 +428,14 @@
       }
       field(axis.since).disabled=!selected;
     }
-    syncMode();syncHistory();changeAxes.forEach(syncSince);
+    function syncRankSeparate(checked){
+      const available=h().separateRankEligible(field('rank').value);
+      const mark=field('rankSeparate');
+      mark.disabled=!available;
+      mark.checked=available&&checked;
+      at('#pe-rank-hint').textContent=available?'按实际单列资格勾选。':'适用于三、四级主任科员和三、四级调研员。';
+    }
+    syncMode();syncHistory();changeAxes.forEach(syncSince);syncRankSeparate(h().separateRank(p));
     function setDirty(){dirty=true;at('#pe-error').hidden=true;}
     form.addEventListener('input',setDirty);
     form.addEventListener('change',e=>{
@@ -431,6 +443,7 @@
       if(e.target.name==='ageMode')syncMode();
       const axis=changeAxes.find(axis=>axis.field===e.target.name);
       if(axis)syncSince(axis);
+      if(e.target.name==='rank')syncRankSeparate(false);
       if(['education','category'].includes(e.target.name)){
         const other=field(e.target.name+'Other');
         other.disabled=e.target.value!=='__custom__';other.required=!other.disabled;other.parentElement.hidden=other.disabled;
@@ -459,6 +472,7 @@
       if(!get('name'))return invalid(field('name'),'请填写姓名。');
       const data=Object.assign({},p);
       for(const k of ['name','gender','education','category','rank','position','rankSince','positionSince'])data[k]=get(k);
+      data.rankSeparate=h().separateRankEligible(data.rank)&&field('rankSeparate').checked;
       const selected=get('deptId');
       const department=departments.find(([key])=>String(key)===selected);
       if(selected && !department)return invalid(field('deptId'),'请选择有效的实际工作科室。');

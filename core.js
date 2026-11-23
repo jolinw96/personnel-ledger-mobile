@@ -45,11 +45,14 @@
       {key:"referenceDeputy",label:"参公副科长",group:"reference",title:"副科长"}
     ],
     ranks:[
-      {key:"research34",label:"三、四级调研员",titles:["三级调研员","四级调研员"]},
+      {key:"research34",label:"三、四级调研员",allowSeparate:true,titles:["三级调研员","四级调研员"]},
       {key:"principal12",label:"一、二级主任科员",titles:["一级主任科员","二级主任科员"]},
-      {key:"principal34",label:"三、四级主任科员",titles:["三级主任科员","四级主任科员"]}
+      {key:"principal34",label:"三、四级主任科员",allowSeparate:true,titles:["三级主任科员","四级主任科员"]}
     ]
   };
+  const separateRankTitles=new Set(quotaGroups.ranks.filter(group=>group.allowSeparate).flatMap(group=>group.titles));
+  const separateRankEligible=rank=>separateRankTitles.has(rank);
+  const separateRank=person=>person.rankSeparate===true && separateRankEligible(person.rank);
   const quotaKeys=new Set([...quotaGroups.positions,...quotaGroups.ranks].map(group=>group.key));
   const quotaValue=value=>Number.isSafeInteger(value)&&value>=0;
   function validPostQuotas(quotas){
@@ -812,6 +815,7 @@
         validHistoryMonths(h) && validResumeLinks(h)
       )))bad();
       if(["gender","education","category","rank","position"].some(k=>p[k]!=null&&typeof p[k]!=="string"))bad();
+      if(has(p,"rankSeparate") && typeof p.rankSeparate!=="boolean")bad();
       if(!isMonth(p.birth)&&!isDate(p.birth))bad();
       if(!isDate(p.roleTimelineSince))bad();
       if(["ageAsOf","deptSince","rankSince","positionSince"].some(k=>!isDate(p[k])))bad();
@@ -889,5 +893,5 @@
       const n=Number(when.slice(0,4))-Number(p.birth.slice(0,4))-(when.slice(5,7)<p.birth.slice(5,7)?1:0);
       return Number.isFinite(n)&&n>=0?n:null;
     },isUnreadable:()=>unreadable, raw:()=>localStorage.getItem(key)};
-  Object.assign(HR,{jobTitles,jobChoices,roleHistoryValues,updateRoleHistory,roleTimeline,resumeTimeline,updateResumeEntry,removeResumeEntry,syncRoleHistory,isMonth,historyMonths,updateHistoryMonths,quotaGroups,staffGroup,unitTarget,clearUnitTargetOverride});
+  Object.assign(HR,{jobTitles,jobChoices,roleHistoryValues,updateRoleHistory,roleTimeline,resumeTimeline,updateResumeEntry,removeResumeEntry,syncRoleHistory,isMonth,historyMonths,updateHistoryMonths,quotaGroups,staffGroup,separateRankEligible,separateRank,unitTarget,clearUnitTargetOverride});
 })();

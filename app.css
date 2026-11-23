@@ -19,6 +19,8 @@
 .unit-quota-head span {color:var(--ink);font-weight:650}
 .post-table th:first-child {width:39%}
 .post-table th:nth-child(3) {width:18%}
+.rank-table th:first-child {width:34%}
+.rank-table th:nth-child(3) {width:15%}
 .post-table td:last-child {font-weight:650;color:var(--blue)}
 .post-over {color:#973936;font-size:13px}
 .quota-fields {padding:10px 0 0;margin:16px 0;border:0;border-top:1px solid var(--line);min-width:0}

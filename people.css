@@ -45,3 +45,7 @@
 .pe-history-row .pe-manual-fields{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:12px}
 .pe-manual-fields>label:nth-child(3){grid-column:1/-1}
 .pe-change-dates{display:grid;gap:8px}
+.pe-rank-mark{align-self:center}
+.pe-rank-mark label{display:inline-flex;align-items:center;gap:8px;min-height:44px}
+.panel .pe-rank-mark input{width:19px;height:19px;min-height:0;margin:0;accent-color:var(--blue)}
+.pe-rank-mark .hint{display:block;font-size:12px}
