@@ -154,6 +154,32 @@
     return pairs;
   }
   const isMonth = value => typeof value==="string" && /^[0-9]{4}-(0[1-9]|1[0-2])$/.test(value);
+  function historyMonths(record){
+    return {
+      start:record.startMonth ?? (record.start||"").slice(0,7),
+      end:record.endMonth ?? (record.effectiveDate||record.end||"").slice(0,7)
+    };
+  }
+  function updateHistoryMonths(record,start,end){
+    if((start!=="" && !isMonth(start)) || !isMonth(end) || (start && start>end))throw Error("过往经历的起止年月有误");
+    const original=historyMonths(record);
+    if(start!==original.start){
+      delete record.start;
+      if(start)record.startMonth=start;else delete record.startMonth;
+    }
+    if(end!==original.end){
+      delete record.effectiveDate;
+      record.endMonth=end;
+    }
+    return record;
+  }
+  function validHistoryMonths(record){
+    if(!has(record,"startMonth") && !has(record,"endMonth"))return true;
+    if(has(record,"startMonth") && (!isMonth(record.startMonth) || (record.start && !record.start.startsWith(record.startMonth+"-"))))return false;
+    if(has(record,"endMonth") && (!isMonth(record.endMonth) || (record.effectiveDate && !record.effectiveDate.startsWith(record.endMonth+"-"))))return false;
+    const {start,end}=historyMonths(record);
+    return !start || start<=end;
+  }
   const icons = {
     book:'<path d="M4 4.5h6c1.2 0 2 .8 2 2 0-1.2.8-2 2-2h6v14h-6c-1.2 0-2 .8-2 1.5 0-.7-.8-1.5-2-1.5H4z"/><path d="M12 6.5V20"/>',
     device:'<rect x="6" y="2.5" width="12" height="19" rx="2.5"/><path d="M10 18h4"/>',
@@ -264,7 +290,8 @@
         h && typeof h.name==="string" && h.name.trim() && isDate(h.start) && !!h.end && isDate(h.end) &&
         ["effectiveDate","positionSince","rankSince"].every(k=>isDate(h[k])) &&
         ["position","rank"].every(k=>h[k]==null||typeof h[k]==="string") &&
-        (!h.effectiveDate || (h.effectiveDate<=h.end && (!h.start || h.effectiveDate>=h.start)))
+        (!h.effectiveDate || (h.effectiveDate<=h.end && (!h.start || h.effectiveDate>=h.start))) &&
+        validHistoryMonths(h)
       )))bad();
       if(["gender","education","category","rank","position"].some(k=>p[k]!=null&&typeof p[k]!=="string"))bad();
       if(!isMonth(p.birth)&&!isDate(p.birth))bad();
@@ -344,5 +371,5 @@
       const n=Number(when.slice(0,4))-Number(p.birth.slice(0,4))-(when.slice(5,7)<p.birth.slice(5,7)?1:0);
       return Number.isFinite(n)&&n>=0?n:null;
     },isUnreadable:()=>unreadable, raw:()=>localStorage.getItem(key)};
-  Object.assign(HR,{jobTitles,jobChoices,isMonth,quotaGroups,staffGroup,unitTarget,clearUnitTargetOverride});
+  Object.assign(HR,{jobTitles,jobChoices,isMonth,historyMonths,updateHistoryMonths,quotaGroups,staffGroup,unitTarget,clearUnitTargetOverride});
 })();

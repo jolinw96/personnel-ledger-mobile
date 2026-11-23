@@ -32,3 +32,11 @@
 .pe-sign {align-items:flex-start}
 .pe-sign .pe-membership {margin:0}
 #pe-transfer-route span {display:block}
+.pe-past-list{list-style:none;margin:7px 0 0;padding:0}
+.pe-past-list li{display:flex;justify-content:space-between;align-items:center;gap:12px;padding:10px 0;border-bottom:1px solid var(--line)}
+.pe-past-list li:last-child{border-bottom:0;padding-bottom:0}
+.pe-past-entry{display:flex;flex-wrap:wrap;align-items:baseline;gap:3px 8px;min-width:0;overflow-wrap:anywhere}
+.pe-past-months{color:var(--muted);font-size:13px;font-variant-numeric:tabular-nums}
+.pe-past-entry strong{font-size:15px}
+.pe-past-entry span{font-size:14px}
+.pe-past-list button{flex:none;min-height:40px;padding:5px 12px}
