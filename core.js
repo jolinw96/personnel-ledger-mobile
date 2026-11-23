@@ -61,7 +61,12 @@
     for(const p of data.people){
       if(typeof p.name!=="string"||!p.name.trim()||!flat(p,["gender","birth","age","ageAsOf","education","category","position","rank","deptSince","rankSince","positionSince"]))bad();
       if(p.deptId==="" ? !!p.deptSince : !idOK(p.deptId)||!parents.has(String(p.deptId)))bad();
-      if(p.deptHistory!=null&&(!Array.isArray(p.deptHistory)||!p.deptHistory.every(h=>h&&typeof h.name==="string"&&h.name.trim()&&isDate(h.start)&&!!h.end&&isDate(h.end))))bad();
+      if(p.deptHistory!=null&&(!Array.isArray(p.deptHistory)||!p.deptHistory.every(h=>
+        h && typeof h.name==="string" && h.name.trim() && isDate(h.start) && !!h.end && isDate(h.end) &&
+        ["effectiveDate","positionSince","rankSince"].every(k=>isDate(h[k])) &&
+        ["position","rank"].every(k=>h[k]==null||typeof h[k]==="string") &&
+        (!h.effectiveDate || ((!h.start || h.effectiveDate>=h.start) && h.effectiveDate<=h.end))
+      )))bad();
       if(["gender","education","category","rank","position"].some(k=>p[k]!=null&&typeof p[k]!=="string"))bad();
       if(!isMonth(p.birth)&&!isDate(p.birth))bad();
       if(["ageAsOf","deptSince","rankSince","positionSince"].some(k=>!isDate(p[k])))bad();
@@ -95,9 +100,10 @@
   }
   const HR=window.HR={state,save,restore,validate,initial,esc,icon,today,notify,subBack:null,container:()=>document.getElementById("content"),
     deptName:id=>{if(id==="")return "未分配科室";const d=HR.state.depts.find(d=>String(d.id)===String(id));return d?d.name:"未登记";},
-    rememberDept:person=>{
-      if(person.deptId===""||person.deptId==null)return;
-      const entry={name:HR.deptName(person.deptId),start:person.deptSince||"",end:today()};
+    rememberDept:(person,previous=person,effectiveDate="")=>{
+      if(previous.deptId===""||previous.deptId==null)return;
+      const entry={name:HR.deptName(previous.deptId),start:previous.deptSince||"",end:today()};
+      if(effectiveDate)Object.assign(entry,{effectiveDate,position:previous.position||"",positionSince:previous.positionSince||"",rank:previous.rank||"",rankSince:previous.rankSince||""});
       person.deptHistory=(person.deptHistory||[]).concat(entry);
     },
     age:(p,date=today())=>{
