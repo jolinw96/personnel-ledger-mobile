@@ -48,7 +48,7 @@
   }
   const categoryLabels={civil:"公务员",reference:"参公编制",institution:"事业编制"};
   function staffingTable(){
-    const units=H.state.establishmentUnits, formal=units.filter(unit=>!unit.legacy);
+    const units=H.state.establishmentUnits;
     const actual={civil:0,reference:0,institution:0};
     for(const person of H.state.people){
       const group=H.staffGroup(person);
@@ -60,29 +60,24 @@
     }
     const gap=(target,count)=>target==null?"—":target<count?'<span class="post-over">超编 '+(count-target)+'</span>':String(target-count);
     const rows=Object.entries(categoryLabels).map(([group,name])=>{
-      const items=formal.filter(u=>u.categoryGroup===group), target=quota(items);
+      const items=units.filter(u=>u.categoryGroup===group), target=quota(items);
       const amount=target==null?"未设置":String(target);
       const quotaCell=group==="reference"?'<button class="staff-edit" type="button" id="reference-quota" data-single="'+(items.length===1?e(items[0].id):'')+'" aria-label="'+(items.length===1?'编辑参公编制指标':'查看参公编制指标明细')+'">'+amount+'</button>':amount;
       return '<tr data-category-subtotal="'+group+'"><th scope="row">'+name+'</th><td>'+quotaCell+'</td><td>'+actual[group]+'</td><td>'+gap(target,actual[group])+'</td></tr>';
     }).join("");
-    const target=quota(formal), count=Object.values(actual).reduce((sum,n)=>sum+n,0);
-    function detailRows(items,legacy){
+    const target=quota(units), count=Object.values(actual).reduce((sum,n)=>sum+n,0);
+    function detailRows(items){
       if(!items.length)return "";
-      const body=items.map(u=>{
-        const value=legacy?(u.quota??u.legacyQuota):u.quota;
-        return '<tr data-quota-detail="'+e(u.id)+'"><th scope="row"><button class="txt quota-name" data-staff-edit="'+e(u.id)+'">'+e(u.name)+' ›</button></th><td>'+(value==null?"—":value)+'</td><td>'+(u.chiefQuota??"—")+'</td><td>'+(u.deputyQuota??"—")+'</td></tr>';
-      }).join("");
-      return '<table class="staff-table detail-table"><thead><tr><th scope="col">'+(legacy?"原台账项目":"指标项目")+'</th><th scope="col">编制数</th><th scope="col">科长</th><th scope="col">副科长</th></tr></thead><tbody>'+body+'</tbody></table>';
+      const body=items.map(u=>'<tr data-quota-detail="'+e(u.id)+'"><th scope="row"><button class="txt quota-name" data-staff-edit="'+e(u.id)+'">'+e(u.name)+' ›</button></th><td>'+(u.quota??"—")+'</td><td>'+(u.chiefQuota??"—")+'</td><td>'+(u.deputyQuota??"—")+'</td></tr>').join("");
+      return '<table class="staff-table detail-table"><thead><tr><th scope="col">指标项目</th><th scope="col">编制数</th><th scope="col">科长</th><th scope="col">副科长</th></tr></thead><tbody>'+body+'</tbody></table>';
     }
     const details=Object.entries(categoryLabels).map(([group,name])=>{
-      const items=formal.filter(u=>u.categoryGroup===group);
-      return '<h4'+(group==="reference"?' id="reference-detail-heading" tabindex="-1"':'')+'>'+name+'</h4>'+(detailRows(items,false)||'<p class="hint">尚无核定指标。</p>');
+      const items=units.filter(u=>u.categoryGroup===group);
+      return '<h4'+(group==="reference"?' id="reference-detail-heading" tabindex="-1"':'')+'>'+name+'</h4>'+(detailRows(items)||'<p class="hint">尚无核定指标。</p>');
     }).join("");
-    const legacy=units.filter(u=>u.legacy);
     return '<p class="hint staff-note">空编 = 核定编制数 − 同类别实有在编人数。借调人员不占编。</p>'+
       '<table class="staff-table unit-table"><thead><tr><th scope="col">人员类别</th><th scope="col">核定编制</th><th scope="col">实有在编</th><th scope="col">空编</th></tr></thead><tbody>'+rows+'</tbody><tfoot><tr data-workforce-total><th scope="row">全单位合计</th><td>'+(target==null?"—":target)+'</td><td>'+count+'</td><td>'+gap(target,count)+'</td></tr></tfoot></table>'+
       '<details class="quota-details" id="quota-details"><summary>核定指标明细</summary>'+details+
-      (legacy.length?'<h4>旧台账指标</h4><p class="hint">选定类别并核对名额后，可纳入分类合计。</p>'+detailRows(legacy,true):'')+
       '<button type="button" id="add-quota-detail" class="secondary">新增指标项目</button></details>';
   }
   function vacancyBoard(){
@@ -198,11 +193,11 @@
     const numberText=value=>value==null?"未设置":String(value);
     const positionsMarkup=positions.map(slot=>{
       const field=postField(slot);
-      const units=H.state.establishmentUnits.filter(u=>!u.legacy&&u.categoryGroup===slot.group);
+      const units=H.state.establishmentUnits.filter(u=>u.categoryGroup===slot.group);
       const hasOverride=Object.prototype.hasOwnProperty.call(H.state.unitPostQuotas,slot.key);
       const breakdown=units.map(u=>'<button type="button" class="member" data-quota-unit="'+e(u.id)+'"><span>'+e(u.name)+'</span><b>'+numberText(u[field])+' ›</b></button>').join("");
       return '<details class="quota-detail" data-post-group="'+slot.key+'" '+(slot.key===focusKey?'open':'')+'><summary>'+e(slot.label)+'<b>'+(hasOverride?'手填 ':'')+numberText(H.unitTarget(slot.key))+'</b></summary>'+
-        (hasOverride?'<label class="quota-override"><input type="checkbox" data-clear-override="'+slot.key+'">取消旧台账手填总数，使用各指标项目合计</label>':'')+
+        (hasOverride?'<label class="quota-override"><input type="checkbox" data-clear-override="'+slot.key+'">取消手填总数，使用各指标项目合计</label>':'')+
         (breakdown||'<p class="hint">尚未设置此类别的指标项目。</p>')+'</details>';
     }).join("");
     const inputsMarkup=ranks.map(slot=>{
@@ -259,11 +254,8 @@
     }
     const quotaInput=(field,caption)=>'<label>'+caption+'<input id="d-'+field+'" type="number" min="0" step="1" inputmode="numeric" placeholder="未设置" value="'+e(d&&d[field]!=null?d[field]:"")+'"></label>';
     const categories=Object.entries(categoryLabels).map(([key,name])=>option(key,name,d&&d.categoryGroup)).join("");
-    const legacyNote=establishment&&d&&d.legacy?'<p class="hint wide">旧台账指标'+(d.legacyQuota!=null?'，升级前记录的编制数为 '+d.legacyQuota:'')+'。核对后选择人员类别并填写名额，即可纳入该类别的合计。</p>':'';
-    const oldPosts=d&&d.legacyPostQuotas?[...H.quotaGroups.positions,...H.quotaGroups.ranks].filter(slot=>d.legacyPostQuotas[slot.key]!=null).map(slot=>slot.label+" "+d.legacyPostQuotas[slot.key]):[];
-    const oldPostNote=oldPosts.length?'<p class="hint wide">升级前的职务职级名额：'+e(oldPosts.join("、"))+'。</p>':'';
-    const overrideNote=establishment&&H.quotaGroups.positions.some(slot=>Object.prototype.hasOwnProperty.call(H.state.unitPostQuotas,slot.key))?'<p class="hint wide">修改某项职务名额后，该职务的旧台账手填总数将改为按指标项目合计。</p>':'';
-    const fields=establishment?legacyNote+oldPostNote+overrideNote+'<label>人员类别<select id="d-category" '+(d&&d.legacy?'':'required')+'>'+option("",d&&d.legacy?"待核实":"请选择",d&&d.categoryGroup)+categories+'</select></label>'+
+    const overrideNote=establishment&&H.quotaGroups.positions.some(slot=>Object.prototype.hasOwnProperty.call(H.state.unitPostQuotas,slot.key))?'<p class="hint wide">修改某项职务名额后，该职务的手填总数将改为按指标项目合计。</p>':'';
+    const fields=establishment?overrideNote+'<label>人员类别<select id="d-category" required>'+option("","请选择",d&&d.categoryGroup)+categories+'</select></label>'+
       quotaInput("quota","编制总数")+quotaInput("chiefQuota","科长名额")+quotaInput("deputyQuota","副科长名额"):'';
     const parentField=establishment?"":'<label class="wide">上级机构<select id="d-parent">'+option("","局机关（本级）",d&&d.parentId)+directory.filter(x=>!blocked(x)).map(x=>option(x.id,x.name,d&&d.parentId)).join("")+'</select></label>';
     main.innerHTML=backTitle(title)+'<form class="panel" id="dept-form"><div class="fields"><label class="wide">'+label+'名称<input id="d-name" required maxlength="80" value="'+e(d?d.name:"")+'"></label>'+parentField+fields+'</div>'+
@@ -297,7 +289,6 @@
           if(value!==null&&(!Number.isSafeInteger(value)||value<0)){H.notify("名额须为非负整数");input.focus();return;}
           changes[field]=value;
         }
-        if(d&&d.legacy&&changes.categoryGroup)changes.legacy=false;
         for(const field of Object.keys(postFields)){
           if(!d||d.categoryGroup!==changes.categoryGroup||d[field]!==changes[field]){
             H.clearUnitTargetOverride(changes.categoryGroup,field);

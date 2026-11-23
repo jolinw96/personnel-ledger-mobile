@@ -27,7 +27,6 @@
 .unit-table th:first-child{width:43%}
 .unit-table th:nth-child(3){width:21%}
 .unit-table tbody th small{display:block;color:var(--muted);font-size:11px;font-weight:400}
-.legacy-heading{margin:20px 0 0;font-size:15px}
 .quota-detail{border-bottom:1px solid var(--line);padding:4px 0}
 .quota-detail summary{cursor:pointer;padding:8px 2px}
 .quota-detail summary b{float:right;color:var(--blue);font-variant-numeric:tabular-nums}

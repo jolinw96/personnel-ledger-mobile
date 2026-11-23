@@ -1,7 +1,6 @@
 (() => {
   "use strict";
   const key = "cn.personnel-ledger-mobile.github-pages.v1";
-  const previousDeptNames = ["办公室","人事教育科","预算科","国库科","行政政法科","科教文科","经济建设科","农业农村科","社会保障科","国有资产管理科","监督评价科","政府采购管理科","会计科","信息中心"];
   const deptNames = [
     "办公室","预算科","街镇科","国库科","资产管理科","绩效评价科","政府采购管理科","基本建设科","综合科","农业科","金融科","教科文科","行政政法科",
     "市政管理科","社会保障科","企业科","财源建设一科","财源建设二科","会计管理科","人事教育科","党建工作科","行政财务科","内控法制科","监督检查大队","信息中心","调研员"
@@ -60,7 +59,9 @@
   function migrateUnitQuotas(depts){
     const quotas={};
     if(!depts.length)return quotas;
-    for(const key of quotaKeys){
+    const officialNames=new Set([...unitPresets,...previousReferencePresets].map(unit=>unit[1]));
+    if(depts.some(d=>!officialNames.has(d.name)) || new Set(depts.map(d=>d.name)).size!==depts.length)return quotas;
+    for(const {key} of quotaGroups.ranks){
       const values=depts.map(d=>d.postQuotas && d.postQuotas[key]);
       if(values.every(quotaValue)){
         const total=values.reduce((sum,n)=>sum+n,0);
@@ -93,7 +94,7 @@
       const mergedIds=new Set(items.map(u=>u.id));
       let id="u-reference",suffix=1;
       while(usedIds.has(id))id="u-reference-"+suffix++;
-      const merged={id,name:"参公编制",categoryGroup:"reference",previousItems:items};
+      const merged={id,name:"参公编制",categoryGroup:"reference"};
       for(const field of ["quota","chiefQuota","deputyQuota"]){
         const sum=items.reduce((n,u)=>n+(u[field]??0),0);
         merged[field]=items.every(u=>quotaValue(u[field])) && quotaValue(sum)?sum:null;
@@ -113,29 +114,20 @@
   }
   function migrateCatalogs(data){
     const original=data.depts;
-    const actualRefs=new Set(data.people.map(p=>String(p.deptId)));
-    const ownerRefs=new Set(data.people.filter(p=>p.establishmentDeptId!=null && p.establishmentDeptId!=="").map(p=>String(p.establishmentDeptId)));
     const names=new Map();
     for(const d of original){
       const matches=names.get(d.name)||[];
       matches.push(d);names.set(d.name,matches);
-      if(d.parentId!=="" && d.parentId!=null)actualRefs.add(String(d.parentId));
     }
-    const hasSettings=d=>d.quota!=null || (d.postQuotas && Object.values(d.postQuotas).some(quotaValue));
     const units=makeUnits([unitPresets[0],...previousReferencePresets,unitPresets[2]]);
     const officialByName=new Map(units.map(u=>[u.name,u]));
-    for(const [index,d] of original.entries()){
+    for(const d of original){
       const official=names.get(d.name).length===1 && officialByName.get(d.name);
       if(official){
         if(has(d,"quota"))official.quota=d.quota;
         for(const slot of quotaGroups.positions.filter(slot=>slot.group===official.categoryGroup)){
           if(d.postQuotas && has(d.postQuotas,slot.key))official[positionField(slot)]=d.postQuotas[slot.key];
         }
-      }else if(hasSettings(d)){
-        const legacy={id:"legacy-"+(index+1),name:d.name,legacy:true,categoryGroup:"",quota:null,chiefQuota:null,deputyQuota:null};
-        if(d.quota!=null)legacy.legacyQuota=d.quota;
-        if(d.postQuotas)legacy.legacyPostQuotas={...d.postQuotas};
-        units.push(legacy);
       }
     }
     const reserved=new Set(original.map(d=>String(d.id))), reused=new Set();
@@ -147,12 +139,7 @@
       while(reserved.has(id))id=base+"-"+suffix++;
       return {id,name,parentId:""};
     });
-    for(const d of original){
-      if(reused.has(d))continue;
-      const oldIndex=previousDeptNames.indexOf(d.name);
-      const untouched=oldIndex>=0 && String(d.id)==="d"+(oldIndex+1) && !d.parentId && !hasSettings(d);
-      if(!untouched || actualRefs.has(String(d.id)) || ownerRefs.has(String(d.id)))data.depts.push(d);
-    }
+    for(const d of original)if(!reused.has(d))data.depts.push(d);
     const previous=data.unitPostQuotas;
     data.establishmentUnits=units;
     data.unitPostQuotas={...rankPresets};
@@ -202,6 +189,46 @@
     }
     return true;
   }
+  function removeLegacyUnits(data){
+    const retired=new Map(data.establishmentUnits.filter(u=>u.legacy===true).map(u=>[String(u.id),u.parentId]));
+    data.establishmentUnits=data.establishmentUnits.filter(u=>u.legacy!==true);
+    for(const u of data.establishmentUnits){
+      let parent=u.parentId;
+      const seen=new Set();
+      while(parent!=null && parent!=="" && retired.has(String(parent))){
+        const id=String(parent);
+        if(seen.has(id)){parent="";break;}
+        seen.add(id);
+        parent=retired.get(id);
+      }
+      if(seen.size)u.parentId=parent==null?"":parent;
+      delete u.legacy;
+      delete u.legacyQuota;
+      delete u.legacyPostQuotas;
+      delete u.previousItems;
+    }
+  }
+  const ownershipFields=["establishmentDeptId","establishmentDeptName","establishmentName","establishmentSince","establishmentStart","establishmentEffectiveDate","establishmentDate","establishmentChanged"];
+  function removeOwnership(record){
+    for(const field of ownershipFields)delete record[field];
+  }
+  function cleanPerson(p){
+    removeOwnership(p);
+    if(Array.isArray(p.history)){
+      for(const entry of p.history)if(entry && typeof entry==="object")removeOwnership(entry);
+    }
+    if(Array.isArray(p.deptHistory)){
+      p.deptHistory=p.deptHistory.filter(h=>!h || h.actualChanged!==false);
+      for(const h of p.deptHistory){
+        if(!h || typeof h!=="object")continue;
+        if(h.actualEffectiveDate)h.effectiveDate=h.actualEffectiveDate;
+        else if(has(h,"actualEffectiveDate") && h.establishmentEffectiveDate && h.effectiveDate===h.establishmentEffectiveDate)delete h.effectiveDate;
+        removeOwnership(h);
+        delete h.actualChanged;
+        delete h.actualEffectiveDate;
+      }
+    }
+  }
   function validate(data){
     const bad = () => {throw Error("备份格式或数据关联有误");};
     if(!data || !["people","depts","policies"].every(k=>Array.isArray(data[k]))) bad();
@@ -216,41 +243,35 @@
     const actualIds=new Set(data.depts.map(d=>String(d.id)));
     for(const d of data.depts){
       if(typeof d.name!=="string"||!d.name.trim()||!flat(d,["parentId"]))bad();
-      if(d.quota!=null&&(!Number.isSafeInteger(d.quota)||d.quota<0))bad();
-      if(d.postQuotas!=null && !validPostQuotas(d.postQuotas))bad();
+      if(!separateCatalogs && d.quota!=null && !quotaValue(d.quota))bad();
+      if(!separateCatalogs && d.postQuotas!=null && !validPostQuotas(d.postQuotas))bad();
     }
     if(!validHierarchy(data.depts))bad();
     if(separateCatalogs){
+      removeLegacyUnits(data);
       for(const unit of data.establishmentUnits){
         if(typeof unit.name!=="string" || !unit.name.trim() || !flat(unit,["parentId"]))bad();
-        if(has(unit,"legacy") && typeof unit.legacy!=="boolean")bad();
-        if(unit.legacy ? unit.categoryGroup!=="" : !["civil","reference","institution"].includes(unit.categoryGroup))bad();
-        if(["quota","chiefQuota","deputyQuota","legacyQuota"].some(k=>unit[k]!=null && !quotaValue(unit[k])))bad();
-        if(unit.legacyPostQuotas!=null && !validPostQuotas(unit.legacyPostQuotas))bad();
+        if(!["civil","reference","institution"].includes(unit.categoryGroup))bad();
+        if(["quota","chiefQuota","deputyQuota"].some(k=>unit[k]!=null && !quotaValue(unit[k])))bad();
       }
       if(!validHierarchy(data.establishmentUnits))bad();
     }
     for(const p of data.people){
+      cleanPerson(p);
       if(typeof p.name!=="string"||!p.name.trim()||!flat(p,["gender","birth","age","ageAsOf","education","category","position","rank","deptSince","rankSince","positionSince"]))bad();
       if(p.deptId==="" ? !!p.deptSince : !idOK(p.deptId)||!actualIds.has(String(p.deptId)))bad();
-      // Prior backups can reference a quota entry that has since been removed.
-      if(p.establishmentDeptId!=null && p.establishmentDeptId!=="" && !idOK(p.establishmentDeptId))bad();
-      if(!isDate(p.establishmentSince))bad();
       if(p.deptHistory!=null&&(!Array.isArray(p.deptHistory)||!p.deptHistory.every(h=>
         h && typeof h.name==="string" && h.name.trim() && isDate(h.start) && !!h.end && isDate(h.end) &&
-        ["effectiveDate","positionSince","rankSince","establishmentStart","actualEffectiveDate","establishmentEffectiveDate"].every(k=>isDate(h[k])) &&
-        ["position","rank","establishmentName"].every(k=>h[k]==null||typeof h[k]==="string") &&
-        ["actualChanged","establishmentChanged"].every(k=>h[k]==null||typeof h[k]==="boolean") &&
-        (!h.effectiveDate || (h.effectiveDate<=h.end && (h.actualChanged===false || !h.start || h.effectiveDate>=h.start))) &&
-        (!h.actualEffectiveDate || (h.actualEffectiveDate<=h.end && (!h.start || h.actualEffectiveDate>=h.start))) &&
-        (!h.establishmentEffectiveDate || (h.establishmentEffectiveDate<=h.end && (!h.establishmentStart || h.establishmentEffectiveDate>=h.establishmentStart)))
+        ["effectiveDate","positionSince","rankSince"].every(k=>isDate(h[k])) &&
+        ["position","rank"].every(k=>h[k]==null||typeof h[k]==="string") &&
+        (!h.effectiveDate || (h.effectiveDate<=h.end && (!h.start || h.effectiveDate>=h.start)))
       )))bad();
       if(["gender","education","category","rank","position"].some(k=>p[k]!=null&&typeof p[k]!=="string"))bad();
       if(!isMonth(p.birth)&&!isDate(p.birth))bad();
       if(["ageAsOf","deptSince","rankSince","positionSince"].some(k=>!isDate(p[k])))bad();
       if(p.age!=null&&p.age!==""&&(!Number.isInteger(Number(p.age))||+p.age<0||+p.age>130))bad();
       if(p.history!=null && (!Array.isArray(p.history)||!p.history.every(h=>h&&typeof h==="object"&&typeof h.title==="string"&&typeof h.type==="string"&&isDate(h.start)&&isDate(h.end)&&
-        ["actualDeptName","establishmentDeptName"].every(k=>h[k]==null||typeof h[k]==="string"))))bad();
+        (h.actualDeptName==null||typeof h.actualDeptName==="string"))))bad();
     }
     if(typeof window.validatePolicies==="function"&&!window.validatePolicies(data.policies))bad();
     if(has(data,"unitPostQuotas")){
@@ -263,10 +284,31 @@
     }
     if(!separateCatalogs)migrateCatalogs(data);
     if(!separateCatalogs || data.quotaCatalogVersion!==quotaCatalogVersion)mergeReferenceQuotas(data);
+    for(const d of data.depts){
+      delete d.quota;
+      delete d.postQuotas;
+    }
     return data;
   }
+  function persistUpgrade(previous,updated){
+    if(localStorage.getItem(key)===previous)localStorage.setItem(key,updated);
+  }
   let state=initial(), unreadable=false;
-  try{const raw=localStorage.getItem(key); if(raw)state=validate(JSON.parse(raw));}
+  try{
+    const stored=localStorage.getItem(key);
+    if(stored){
+      const parsed=JSON.parse(stored);
+      const before=JSON.stringify(parsed);
+      state=validate(parsed);
+      const updated=JSON.stringify(state);
+      if(updated!==before){
+        try{persistUpgrade(stored,updated);}
+        catch(error){
+          if(typeof document!=="undefined")setTimeout(()=>notify("本次升级未能保存到本机，原台账已保留。请检查可用空间后重新打开。"),0);
+        }
+      }
+    }
+  }
   catch(e){unreadable=true;}
   let snapshot=JSON.stringify(state);
   function notify(msg){

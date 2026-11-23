@@ -122,7 +122,7 @@
   }
   function pastDepartment(record){
     const roles=priorRoles(record);
-    const date=record.actualEffectiveDate||record.effectiveDate;
+    const date=record.effectiveDate;
     const time=[record.start?'到任 '+esc(record.start):'',date?'调动生效 '+esc(date):''].filter(Boolean).join(' · ');
     return '<li><strong>实际工作科室变更</strong><span>实际工作科室 '+pretty(record.name)+(time?'（'+time+'）':'')+'</span>'+
       (roles?'<span>'+roles+'</span>':'')+'<span>科室变更登记日 '+pretty(record.end)+'</span></li>';
@@ -135,7 +135,7 @@
     h().subBack = finish;
     const a = h().age(p);
     const timeline = [...(p.history || [])].sort((x,y)=>String(y.start).localeCompare(String(x.start)));
-    const pastDepts = (p.deptHistory || []).filter(record=>record.actualChanged!==false).reverse();
+    const pastDepts = [...(p.deptHistory || [])].reverse();
     view().innerHTML = backButton('返回')+'<div class="heading"><h1>人员档案</h1>'+button('pe-edit','编辑','secondary')+'</div>'+
       '<section class="panel pe-identity"><div class="pe-sign"><strong>'+esc(p.name)+'</strong>'+workDepartment(p)+'</div><dl class="pe-details">'+
       detailField('性别',p.gender)+detailField('年龄',a == null || a === '' ? '' : a+' 岁')+
