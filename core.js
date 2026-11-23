@@ -6,19 +6,23 @@
     "办公室","预算科","街镇科","国库科","资产管理科","绩效评价科","政府采购管理科","基本建设科","综合科","农业科","金融科","教科文科","行政政法科",
     "市政管理科","社会保障科","企业科","财源建设一科","财源建设二科","会计管理科","人事教育科","党建工作科","行政财务科","内控法制科","监督检查大队","信息中心","调研员"
   ];
-  const unitPresets = [
-    ["u-civil","公务员编制","civil",94,24,23],
+  const previousReferencePresets = [
     ["u-inspection","财政监督检查大队","reference",20,1,3],
     ["u-payment","财政支付中心","reference",28,1,3],
     ["u-budget","预算编审中心","reference",10,1,2],
-    ["u-performance","绩效考评中心","reference",10,1,2],
+    ["u-performance","绩效考评中心","reference",10,1,2]
+  ];
+  const unitPresets = [
+    ["u-civil","公务员编制","civil",94,24,23],
+    ["u-reference","参公编制","reference",68,4,10],
     ["u-institution","事业编制","institution",22,1,3]
   ];
+  const quotaCatalogVersion=2;
   const rankPresets = {research34:20,principal12:50,principal34:50};
-  const makeUnits = () => unitPresets.map(([id,name,categoryGroup,quota,chiefQuota,deputyQuota])=>({id,name,categoryGroup,quota,chiefQuota,deputyQuota}));
+  const makeUnits = (presets=unitPresets) => presets.map(([id,name,categoryGroup,quota,chiefQuota,deputyQuota])=>({id,name,categoryGroup,quota,chiefQuota,deputyQuota}));
   const initial = () => ({
     people:[],depts:deptNames.map((name,i)=>({id:"a"+(i+1),name,parentId:""})),
-    establishmentUnits:makeUnits(),policies:[],unitPostQuotas:{...rankPresets}
+    establishmentUnits:makeUnits(),quotaCatalogVersion,policies:[],unitPostQuotas:{...rankPresets}
   });
   const has = (obj,key) => Object.prototype.hasOwnProperty.call(obj,key);
   const esc = str => String(str==null?"":str).replace(/[&<>"']/g,c=>({"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;","'":"&#39;"}[c]));
@@ -30,7 +34,7 @@
   };
   const staffCategories = new Map([
     ...["公务员","公务员(行政编)","公务员(行政编制)","行政编","行政编制"].map(name=>[name,"civil"]),
-    ...["参公","参公人员","参公管理人员","参公事业编","参公事业编制"].map(name=>[name,"reference"]),
+    ...["参公","参公编制","参公人员","参公管理人员","参公事业编","参公事业编制"].map(name=>[name,"reference"]),
     ...["事业编","事业编制","事业编制人员"].map(name=>[name,"institution"])
   ]);
   const staffGroup = p => staffCategories.get(String(p.category||"").trim().replace(/（/g,"(").replace(/）/g,")")) || "";
@@ -80,6 +84,33 @@
     const slot=quotaGroups.positions.find(slot=>slot.group===group && positionField(slot)===field);
     if(slot)delete HR.state.unitPostQuotas[slot.key];
   }
+  function mergeReferenceQuotas(data){
+    const units=data.establishmentUnits;
+    const oldIds=new Set(previousReferencePresets.map(([id])=>id));
+    const items=units.filter(u=>!u.legacy && u.categoryGroup==="reference" && oldIds.has(u.id));
+    if(items.length){
+      const usedIds=new Set(units.map(u=>String(u.id)));
+      const mergedIds=new Set(items.map(u=>u.id));
+      let id="u-reference",suffix=1;
+      while(usedIds.has(id))id="u-reference-"+suffix++;
+      const merged={id,name:"参公编制",categoryGroup:"reference",previousItems:items};
+      for(const field of ["quota","chiefQuota","deputyQuota"]){
+        const sum=items.reduce((n,u)=>n+(u[field]??0),0);
+        merged[field]=items.every(u=>quotaValue(u[field])) && quotaValue(sum)?sum:null;
+      }
+      const parent=items[0].parentId;
+      if(parent!=null && parent!=="" && !mergedIds.has(String(parent)) &&
+         items.every(u=>String(u.parentId)===String(parent)))merged.parentId=parent;
+      data.establishmentUnits=[];
+      for(const u of units){
+        if(u===items[0])data.establishmentUnits.push(merged);
+        if(mergedIds.has(u.id))continue;
+        if(mergedIds.has(u.parentId))u.parentId=id;
+        data.establishmentUnits.push(u);
+      }
+    }
+    data.quotaCatalogVersion=quotaCatalogVersion;
+  }
   function migrateCatalogs(data){
     const original=data.depts;
     const actualRefs=new Set(data.people.map(p=>String(p.deptId)));
@@ -91,14 +122,14 @@
       if(d.parentId!=="" && d.parentId!=null)actualRefs.add(String(d.parentId));
     }
     const hasSettings=d=>d.quota!=null || (d.postQuotas && Object.values(d.postQuotas).some(quotaValue));
-    const units=makeUnits(), officialByName=new Map(units.map(u=>[u.name,u]));
+    const units=makeUnits([unitPresets[0],...previousReferencePresets,unitPresets[2]]);
+    const officialByName=new Map(units.map(u=>[u.name,u]));
     for(const [index,d] of original.entries()){
       const official=names.get(d.name).length===1 && officialByName.get(d.name);
       if(official){
-        if(d.quota!=null)official.quota=d.quota;
+        if(has(d,"quota"))official.quota=d.quota;
         for(const slot of quotaGroups.positions.filter(slot=>slot.group===official.categoryGroup)){
-          const old=d.postQuotas && d.postQuotas[slot.key];
-          if(quotaValue(old))official[positionField(slot)]=old;
+          if(d.postQuotas && has(d.postQuotas,slot.key))official[positionField(slot)]=d.postQuotas[slot.key];
         }
       }else if(hasSettings(d)){
         const legacy={id:"legacy-"+(index+1),name:d.name,legacy:true,categoryGroup:"",quota:null,chiefQuota:null,deputyQuota:null};
@@ -126,7 +157,7 @@
     data.establishmentUnits=units;
     data.unitPostQuotas={...rankPresets};
     for(const [key,value] of Object.entries(previous)){
-      if(quotaValue(value) && value!==unitTarget(key,data))data.unitPostQuotas[key]=value;
+      if(quotaValue(value))data.unitPostQuotas[key]=value;
     }
   }
   function jobChoices(kind,previous){
@@ -175,6 +206,7 @@
     const bad = () => {throw Error("备份格式或数据关联有误");};
     if(!data || !["people","depts","policies"].every(k=>Array.isArray(data[k]))) bad();
     const separateCatalogs=has(data,"establishmentUnits");
+    if(has(data,"quotaCatalogVersion") && data.quotaCatalogVersion!==quotaCatalogVersion)bad();
     if(separateCatalogs && !Array.isArray(data.establishmentUnits))bad();
     const lists=[data.people,data.depts,data.policies];
     if(separateCatalogs)lists.push(data.establishmentUnits);
@@ -230,6 +262,7 @@
       if(p.birth)p.birth=p.birth.slice(0,7);
     }
     if(!separateCatalogs)migrateCatalogs(data);
+    if(!separateCatalogs || data.quotaCatalogVersion!==quotaCatalogVersion)mergeReferenceQuotas(data);
     return data;
   }
   let state=initial(), unreadable=false;

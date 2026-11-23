@@ -46,7 +46,7 @@
     else if(page==="policy")window.renderPolicy();
     else storage();
   }
-  const categoryLabels={civil:"公务员",reference:"参公",institution:"事业编制"};
+  const categoryLabels={civil:"公务员",reference:"参公编制",institution:"事业编制"};
   function staffingTable(){
     const units=H.state.establishmentUnits, formal=units.filter(unit=>!unit.legacy);
     const actual={civil:0,reference:0,institution:0};
@@ -60,8 +60,10 @@
     }
     const gap=(target,count)=>target==null?"—":target<count?'<span class="post-over">超编 '+(count-target)+'</span>':String(target-count);
     const rows=Object.entries(categoryLabels).map(([group,name])=>{
-      const target=quota(formal.filter(u=>u.categoryGroup===group));
-      return '<tr data-category-subtotal="'+group+'"><th scope="row">'+name+'</th><td>'+(target==null?"未设置":target)+'</td><td>'+actual[group]+'</td><td>'+gap(target,actual[group])+'</td></tr>';
+      const items=formal.filter(u=>u.categoryGroup===group), target=quota(items);
+      const amount=target==null?"未设置":String(target);
+      const quotaCell=group==="reference"?'<button class="staff-edit" type="button" id="reference-quota" data-single="'+(items.length===1?e(items[0].id):'')+'" aria-label="'+(items.length===1?'编辑参公编制指标':'查看参公编制指标明细')+'">'+amount+'</button>':amount;
+      return '<tr data-category-subtotal="'+group+'"><th scope="row">'+name+'</th><td>'+quotaCell+'</td><td>'+actual[group]+'</td><td>'+gap(target,actual[group])+'</td></tr>';
     }).join("");
     const target=quota(formal), count=Object.values(actual).reduce((sum,n)=>sum+n,0);
     function detailRows(items,legacy){
@@ -74,7 +76,7 @@
     }
     const details=Object.entries(categoryLabels).map(([group,name])=>{
       const items=formal.filter(u=>u.categoryGroup===group);
-      return '<h4>'+name+'</h4>'+(detailRows(items,false)||'<p class="hint">尚无核定指标。</p>');
+      return '<h4'+(group==="reference"?' id="reference-detail-heading" tabindex="-1"':'')+'>'+name+'</h4>'+(detailRows(items,false)||'<p class="hint">尚无核定指标。</p>');
     }).join("");
     const legacy=units.filter(u=>u.legacy);
     return '<p class="hint staff-note">空编 = 核定编制数 − 同类别实有在编人数。借调人员不占编。</p>'+
@@ -135,6 +137,13 @@
     main.querySelectorAll("[data-chart]").forEach(b=>b.onclick=()=>{chart=b.dataset.chart;overview();});
     main.querySelectorAll("[data-staff-tab]").forEach(b=>b.onclick=()=>{staffTab=b.dataset.staffTab;overview();main.querySelector("[data-staff-tab="+staffTab+"]").focus({preventScroll:true});});
     main.querySelectorAll("[data-staff-edit]").forEach(b=>b.onclick=()=>deptForm(b.dataset.staffEdit,"overview","quota"));
+    click("reference-quota",ev=>{
+      const id=ev.currentTarget.dataset.single;
+      if(id){deptForm(id,"category-board","quota");return;}
+      document.getElementById("quota-details").open=true;
+      const heading=document.getElementById("reference-detail-heading");
+      heading.focus({preventScroll:true});heading.scrollIntoView({block:"start"});
+    });
     click("add-quota-detail",()=>deptForm(null,"overview","quota"));
     click("edit-unit-quotas",()=>unitQuotaForm());
     main.querySelectorAll("[data-edit-unit]").forEach(b=>b.onclick=()=>unitQuotaForm(b.dataset.editUnit));
@@ -261,6 +270,11 @@
       '<div class="action-row"><button class="primary" type="submit">保存'+label+'</button>'+(d?'<button type="button" id="delete-dept" class="plain-btn danger">删除'+label+'</button>':'')+'</div></form>';
     function leave(){
       if(returnPage==="quotas"){unitQuotaForm(focusKey);return;}
+      if(returnPage==="category-board"){
+        go("overview");
+        const control=document.getElementById("reference-quota");
+        control.focus({preventScroll:true});control.scrollIntoView({block:"center"});return;
+      }
       go(returnPage);
       if(establishment&&returnPage==="overview"){
         const details=document.getElementById("quota-details");
@@ -271,7 +285,8 @@
     document.getElementById("dept-form").onsubmit=ev=>{
       ev.preventDefault();
       const name=document.getElementById("d-name").value.trim();
-      if(!name||directory.some(x=>x!==d&&x.name===name)){H.notify("请填写不重复的"+label+"名称");return;}
+      const nameChanged=!d||name!==d.name;
+      if(!name||(nameChanged&&directory.some(x=>x.name===name))){H.notify("请填写不重复的"+label+"名称");return;}
       const changes={name};
       if(!establishment)changes.parentId=document.getElementById("d-parent").value;
       if(establishment){
