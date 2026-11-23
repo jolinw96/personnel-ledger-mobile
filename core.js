@@ -91,26 +91,21 @@
       if(d.parentId!=="" && d.parentId!=null)actualRefs.add(String(d.parentId));
     }
     const hasSettings=d=>d.quota!=null || (d.postQuotas && Object.values(d.postQuotas).some(quotaValue));
-    const units=makeUnits(), officialByName=new Map(units.map(u=>[u.name,u])), ownerIds=new Map();
+    const units=makeUnits(), officialByName=new Map(units.map(u=>[u.name,u]));
     for(const [index,d] of original.entries()){
-      const id=String(d.id);
       const official=names.get(d.name).length===1 && officialByName.get(d.name);
       if(official){
-        ownerIds.set(id,official.id);
         if(d.quota!=null)official.quota=d.quota;
         for(const slot of quotaGroups.positions.filter(slot=>slot.group===official.categoryGroup)){
           const old=d.postQuotas && d.postQuotas[slot.key];
           if(quotaValue(old))official[positionField(slot)]=old;
         }
-      }else if(ownerRefs.has(id) || hasSettings(d)){
+      }else if(hasSettings(d)){
         const legacy={id:"legacy-"+(index+1),name:d.name,legacy:true,categoryGroup:"",quota:null,chiefQuota:null,deputyQuota:null};
         if(d.quota!=null)legacy.legacyQuota=d.quota;
         if(d.postQuotas)legacy.legacyPostQuotas={...d.postQuotas};
-        units.push(legacy);ownerIds.set(id,legacy.id);
+        units.push(legacy);
       }
-    }
-    for(const p of data.people){
-      if(p.establishmentDeptId!=null && p.establishmentDeptId!=="")p.establishmentDeptId=ownerIds.get(String(p.establishmentDeptId));
     }
     const reserved=new Set(original.map(d=>String(d.id))), reused=new Set();
     data.depts=deptNames.map((name,i)=>{
@@ -125,7 +120,7 @@
       if(reused.has(d))continue;
       const oldIndex=previousDeptNames.indexOf(d.name);
       const untouched=oldIndex>=0 && String(d.id)==="d"+(oldIndex+1) && !d.parentId && !hasSettings(d);
-      if(!untouched || actualRefs.has(String(d.id)))data.depts.push(d);
+      if(!untouched || actualRefs.has(String(d.id)) || ownerRefs.has(String(d.id)))data.depts.push(d);
     }
     const previous=data.unitPostQuotas;
     data.establishmentUnits=units;
@@ -193,7 +188,6 @@
       if(d.postQuotas!=null && !validPostQuotas(d.postQuotas))bad();
     }
     if(!validHierarchy(data.depts))bad();
-    const ownerIds=separateCatalogs ? new Set(data.establishmentUnits.map(u=>String(u.id))) : actualIds;
     if(separateCatalogs){
       for(const unit of data.establishmentUnits){
         if(typeof unit.name!=="string" || !unit.name.trim() || !flat(unit,["parentId"]))bad();
@@ -207,9 +201,8 @@
     for(const p of data.people){
       if(typeof p.name!=="string"||!p.name.trim()||!flat(p,["gender","birth","age","ageAsOf","education","category","position","rank","deptSince","rankSince","positionSince"]))bad();
       if(p.deptId==="" ? !!p.deptSince : !idOK(p.deptId)||!actualIds.has(String(p.deptId)))bad();
-      if(p.establishmentDeptId==null || p.establishmentDeptId===""){
-        if(p.establishmentSince)bad();
-      }else if(!idOK(p.establishmentDeptId)||!ownerIds.has(String(p.establishmentDeptId)))bad();
+      // Prior backups can reference a quota entry that has since been removed.
+      if(p.establishmentDeptId!=null && p.establishmentDeptId!=="" && !idOK(p.establishmentDeptId))bad();
       if(!isDate(p.establishmentSince))bad();
       if(p.deptHistory!=null&&(!Array.isArray(p.deptHistory)||!p.deptHistory.every(h=>
         h && typeof h.name==="string" && h.name.trim() && isDate(h.start) && !!h.end && isDate(h.end) &&
@@ -235,10 +228,6 @@
     }
     for(const p of data.people){
       if(p.birth)p.birth=p.birth.slice(0,7);
-      if(!has(p,"establishmentDeptId")){
-        p.establishmentDeptId=separateCatalogs?null:p.deptId;
-        p.establishmentSince="";
-      }
     }
     if(!separateCatalogs)migrateCatalogs(data);
     return data;
@@ -266,23 +255,12 @@
   }
   const HR=window.HR={state,save,restore,validate,initial,esc,icon,today,notify,subBack:null,container:()=>document.getElementById("content"),
     deptName:id=>{if(id==="")return "未分配科室";const d=HR.state.depts.find(d=>String(d.id)===String(id));return d?d.name:"未登记";},
-    establishmentName:p=>{
-      if(p.establishmentDeptId==null)return "待核实";
-      if(p.establishmentDeptId==="")return "未分配编制单位";
-      const unit=HR.state.establishmentUnits.find(u=>String(u.id)===String(p.establishmentDeptId));
-      return unit?unit.name:"未登记";
-    },
-    rememberDept:(person,previous=person,effectiveDate="",changes={actual:true,establishment:false})=>{
-      if(!changes.actual&&!changes.establishment)return;
+    rememberDept:(person,previous=person,effectiveDate="")=>{
       const entry={
         name:HR.deptName(previous.deptId),start:previous.deptSince||"",end:today(),
-        establishmentName:HR.establishmentName(previous),establishmentStart:previous.establishmentSince||"",
-        actualChanged:changes.actual,establishmentChanged:changes.establishment,
-        actualEffectiveDate:changes.actual?(changes.actualDate||effectiveDate):"",
-        establishmentEffectiveDate:changes.establishment?(changes.establishmentDate||effectiveDate):"",
         position:previous.position||"",positionSince:previous.positionSince||"",rank:previous.rank||"",rankSince:previous.rankSince||""
       };
-      if(entry.actualEffectiveDate||entry.establishmentEffectiveDate)entry.effectiveDate=entry.actualEffectiveDate||entry.establishmentEffectiveDate;
+      if(effectiveDate)entry.effectiveDate=effectiveDate;
       person.deptHistory=(person.deptHistory||[]).concat(entry);
     },
     age:(p,date=today())=>{

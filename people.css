@@ -28,11 +28,7 @@
 .pe-transfer-card .hint, .pe-transfer-card .pe-form-error {margin: 6px 0 0}
 .pe-transfer-card button {width: 100%; margin-top: 8px; min-height: 44px}
 .pe-transfer-card button + .hint {margin-top: 14px}
-.pe-memberships {display:grid; gap:2px; margin-top:3px; line-height:1.5; font-size:13px; color:var(--muted)}
-.pe-memberships b {font-weight:500; color:var(--blue); overflow-wrap:anywhere}
+.pe-membership {display:block; margin-top:3px; line-height:1.5; font-size:13px; color:var(--muted)}
 .pe-sign {align-items:flex-start}
-.pe-sign .pe-memberships {margin:0}
-.pe-sign .pe-memberships span {font-size:13px}
-.pe-copy-actual {margin-top:5px; padding-left:0; font-size:13px}
+.pe-sign .pe-membership {margin:0}
 #pe-transfer-route span {display:block}
-.pe-transfer-card label + label {margin-top:8px}

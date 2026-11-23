@@ -200,7 +200,7 @@
     setPage(backButton+heading('人员测算明细')+
       '<section class="panel"><h2>'+esc(ruleIndex==null?'全部政策规则':rules[0].name)+'</h2><p class="date">截至 '+esc(forecastDate)+'</p><div class="pol-tabs">'+Object.entries(tabs).map(([key,name])=>'<button class="chip" data-filter="'+key+'" aria-pressed="'+(key===filter)+'">'+name+' '+counts[key]+'</button>').join('')+'</div>'+
       (filtered.length?filtered.slice(0,limit).map(({person,statuses})=>{
-        const name=esc(person.name),dept='实际：'+esc(H.deptName(person.deptId))+' · 编制：'+esc(H.establishmentName(person));
+        const name=esc(person.name),dept=esc(H.deptName(person.deptId));
         return '<details class="pol-person"><summary><strong>'+name+'</strong><span>'+dept+' ›</span></summary>'+
           rules.map((r,i)=>'<div class="pol-evidence"><b>'+esc(r.name)+' · '+statusName[statuses[i]]+'</b><ul>'+check(person,r,forecastDate).notes.map(n=>'<li>'+esc(n)+'</li>').join('')+'</ul></div>').join('')+'</details>';
       }).join(''):'<p class="empty">此分类下暂无人员。</p>')+
