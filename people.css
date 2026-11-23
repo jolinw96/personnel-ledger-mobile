@@ -32,18 +32,16 @@
 .pe-sign {align-items:flex-start}
 .pe-sign .pe-membership {margin:0}
 #pe-transfer-route span {display:block}
-.pe-past-list{list-style:none;margin:7px 0 0;padding:0}
-.pe-past-list li{display:flex;justify-content:space-between;align-items:center;gap:12px;padding:10px 0;border-bottom:1px solid var(--line)}
-.pe-past-list li:last-child{border-bottom:0;padding-bottom:0}
-.pe-past-entry{display:flex;flex-wrap:wrap;align-items:baseline;gap:3px 8px;min-width:0;overflow-wrap:anywhere}
-.pe-past-months{color:var(--muted);font-size:13px;font-variant-numeric:tabular-nums}
-.pe-past-entry strong{font-size:15px}
-.pe-past-entry span{font-size:14px}
-.pe-past-list button{flex:none;min-height:40px;padding:5px 12px}
-.pe-history-row .pe-manual-fields,.pe-history-roles{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:12px}
+.pe-resume-list{list-style:none;margin:0;padding:0}
+.pe-resume-list li{display:flex;justify-content:space-between;align-items:center;gap:12px;padding:10px 0;border-bottom:1px solid var(--line)}
+.pe-resume-list li:last-child{border-bottom:0;padding-bottom:0}
+.pe-resume-entry{display:flex;flex-wrap:wrap;align-items:baseline;gap:3px 9px;min-width:0;overflow-wrap:anywhere}
+.pe-resume-months{color:var(--muted);font-size:13px;font-variant-numeric:tabular-nums}
+.pe-resume-entry strong{font-size:15px}
+.pe-resume-entry span{font-size:14px}
+.pe-resume-entry small{color:var(--teal);font-size:12px}
+.pe-resume-list button{flex:none;min-height:40px;padding:5px 12px}
+#pe-resume h2:focus{outline:none}
+.pe-history-row .pe-manual-fields{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:12px}
 .pe-manual-fields>label:nth-child(3){grid-column:1/-1}
-.pe-history-roles{margin:5px 0;gap:8px}
-.pe-history-roles dt{font-size:12px;color:var(--muted)}
-.pe-history-roles dd{margin:0;font-size:15px;font-weight:600;overflow-wrap:anywhere}
 .pe-change-dates{display:grid;gap:8px}
-.pe-timeline [data-edit-current-role]{padding:6px 0;min-height:36px;font-size:13px}

@@ -319,7 +319,7 @@
       const parentId=d.parentId==null?"":d.parentId;
       const parent=directory.find(x=>String(x.id)===String(parentId));
       const message=["删除"+label+"「"+d.name+"」？"];
-      if(affected.length)message.push(affected.length+" 人的"+label+"将变为未分配，原科室和任职期间将记入经历。");
+      if(affected.length)message.push(affected.length+" 人的"+label+"将变为未分配，原科室和任职期间将记入个人简历。");
       if(children.length&&!establishment)message.push(children.length+" 个直属下级将移到「"+(parent?parent.name:"局机关（本级）")+"」下。");
       if(!confirm(message.join("\n")))return;
       const revised=new Map();

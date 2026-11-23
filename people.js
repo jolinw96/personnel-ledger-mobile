@@ -116,71 +116,93 @@
     renderResults();
   }
   function detailField(label,value){return '<div><dt>'+label+'</dt><dd>'+pretty(value)+'</dd></div>';}
-  function pastDepartment({record,index,months}){
-    const monthText=month=>month.replace('-','.');
-    const period=(months.start?monthText(months.start):'起月未登记')+'—'+(months.end?monthText(months.end):'止月未登记');
-    return '<li data-dept-history="'+index+'"><div class="pe-past-entry"><div class="pe-past-months">'+esc(period)+'</div><strong>'+esc(record.name)+'</strong><span>'+esc(record.position||'职务未登记')+'</span></div>'+
-      '<button type="button" class="secondary" data-edit-dept-history="'+index+'" aria-label="编辑'+esc(record.name)+'的过往经历">编辑</button></li>';
+  function resumeSummary(row,precise=false){
+    const date=value=>(value||'').slice(0,precise?10:7).replace(/-/g,'.');
+    const start=date(row.start)||'起月未登记';
+    const end=date(row.end)||(row.roleEndUnknown?'止月未登记':'至今');
+    const roles=[row.position,row.rank,row.otherType,row.otherTitle].filter(Boolean).map(esc).join(' · ');
+    return '<span class="pe-resume-months">'+esc(start)+'—'+esc(end)+'</span><strong>'+esc(row.actualDeptName||'科室未登记')+'</strong>'+
+      (roles?'<span>'+roles+'</span>':'')+(row.timelineCurrent?'<small>当前</small>':'');
   }
-  function editDepartmentHistory(id,index,finish){
-    const record=person(id)?.deptHistory?.[index];
-    if(!record){h().notify('找不到这条经历');showPerson(id,finish);return;}
-    const original=JSON.stringify(record);
-    const months=h().historyMonths(record);
-    const monthAttrs='type="month" placeholder="YYYY-MM" maxlength="7"';
-    view().innerHTML=backButton('返回档案')+'<div class="heading"><h1>编辑过往经历</h1></div>'+
-      '<form id="pe-past-form"><section class="panel"><div class="fields">'+
-      input('startMonth','开始年月',months.start,monthAttrs)+input('endMonth','结束年月',months.end,monthAttrs+' required')+
-      input('name','历史工作科室',record.name,'required maxlength="80"')+
+  function roleOptions(kind,previous){
+    return h().jobChoices(kind,previous).map(([value,label])=>[value,label,!h().jobTitles[kind].includes(value)]);
+  }
+  function editResume(id,row,finish){
+    if(row?.timelineCurrent){openPerson(id,finish);at('[name=position]').focus();return;}
+    const initial=person(id);
+    if(!initial){finish();return;}
+    const fingerprint=JSON.stringify(initial);
+    const monthly=row?.editPrecision==='month';
+    const source=row||{};
+    const initialDate=value=>(value||'').slice(0,monthly?7:10);
+    const since=initialDate(source.start),until=initialDate(source.end);
+    const attrs=monthly?'type="month" placeholder="YYYY-MM"':'type="date"';
+    const needsDept=Boolean(row?.deptHistoryIndices.length);
+    view().innerHTML=backButton('返回档案')+'<div class="heading"><h1>'+(row?'编辑简历经历':'添加简历经历')+'</h1></div>'+
+      '<form id="pe-resume-form"><section class="panel"><div class="fields">'+
+      input('start',monthly?'开始年月':'起始日期',since,attrs+(row?'':' required'))+
+      input('end',(monthly?'结束年月':'结束日期')+(source.roleEndUnknown?'（未登记）':needsDept?'':'（至今可留空）'),until,attrs)+
+      input('name','工作科室',source.actualDeptName,'maxlength="80"'+(needsDept?' required':''))+
       select('deptChoice','从现有科室选择',deptOptions(),'','选择科室')+
-      select('position','职务',h().jobChoices('position',record.position),record.position,'未登记')+
-      '</div></section><p role="alert" class="pe-form-error" id="pe-past-error" hidden></p><div class="pe-save"><button class="primary" type="submit">保存经历</button>'+button('pe-past-cancel','取消')+'</div></form>';
-    const form=at('#pe-past-form');
-    const field=name=>form.elements.namedItem(name);
-    const error=at('#pe-past-error');
+      select('position','职务',roleOptions('position',source.position),source.position,'未登记')+
+      select('rank','职级',roleOptions('rank',source.rank),source.rank,'未登记')+'</div>'+otherHistoryRole(source)+'</section>'+
+      '<p role="alert" class="pe-form-error" id="pe-resume-error" hidden></p><div class="pe-save"><button class="primary" type="submit">保存经历</button>'+button('pe-resume-cancel','取消')+'</div></form>'+
+      (row?button('pe-resume-delete','删除此段经历','plain-btn danger')+'<div id="pe-resume-delete-check" class="panel pe-confirm" hidden><p>删除这段简历经历？</p><div class="action-row">'+button('pe-resume-keep','保留经历')+button('pe-resume-remove','确认删除','pe-destructive')+'</div></div>':'');
+    const form=at('#pe-resume-form'),field=key=>form.elements.namedItem(key),error=at('#pe-resume-error');
     let saving=false;
     function leave(){
       if(saving)return;
       showPerson(id,finish);
-      const control=at('[data-edit-dept-history="'+index+'"]');
-      if(control){control.focus({preventScroll:true});control.scrollIntoView({block:'nearest'});}
+      const heading=at('#pe-resume h2');
+      if(heading){heading.focus({preventScroll:true});heading.scrollIntoView({block:'nearest'});}
     }
-    function invalid(input,message){
-      error.textContent=message;error.hidden=false;input.focus();
-    }
-    h().subBack=leave;on('#pe-back','click',leave);on('#pe-past-cancel','click',leave);
+    function invalid(el,message){error.textContent=message;error.hidden=false;el.focus();}
+    h().subBack=leave;on('#pe-back','click',leave);on('#pe-resume-cancel','click',leave);
     field('deptChoice').onchange=()=>{
       const selected=h().state.depts.find(d=>String(d.id)===field('deptChoice').value);
       if(selected)field('name').value=selected.name;
       field('deptChoice').value='';
     };
     form.oninput=()=>{error.hidden=true;};
-    form.onsubmit=async event=>{
-      event.preventDefault();
+    async function commit(remove){
       if(saving)return;
-      const start=field('startMonth').value.trim(), end=field('endMonth').value.trim();
-      const name=field('name').value.trim(), position=field('position').value;
-      if(start&&!h().isMonth(start))return invalid(field('startMonth'),'请填写有效的开始年月。');
-      if(!h().isMonth(end))return invalid(field('endMonth'),'请填写有效的结束年月。');
-      if(start&&end<start)return invalid(field('endMonth'),'结束年月不能早于开始年月。');
-      if(!name)return invalid(field('name'),'请填写历史工作科室。');
-      const history=person(id)?.deptHistory;
-      const current=history?.[index];
-      if(!current||JSON.stringify(current)!==original){h().notify('这条经历已更新，请重新编辑');leave();return;}
-      const next={...current,name};
-      if(position!==(current.position||''))next.position=position;
-      h().updateHistoryMonths(next,start,end);
-      history[index]=next;
-      saving=true;
-      form.querySelector('[type=submit]').disabled=true;
-      try{
-        if(!await h().save())return;
-      }finally{
-        saving=false;
-        form.querySelector('[type=submit]').disabled=false;
+      const start=field('start').value,end=field('end').value;
+      const actualDeptName=field('name').value.trim(),position=field('position').value,rank=field('rank').value;
+      if(!remove){
+        if(monthly&&((start&&!h().isMonth(start))||(end&&!h().isMonth(end))))return invalid(field('end'),'请填写有效年月。');
+        if(start&&end&&start>end)return invalid(field('end'),'结束时间不能早于开始时间。');
+        if(!row){
+          if(!position&&!rank)return invalid(field('position'),'请至少选择职务或职级中的一项。');
+          if(start>h().today()||end>h().today())return invalid(field(start>h().today()?'start':'end'),'日期不能晚于今天。');
+          if(initial.birth&&start.slice(0,7)<initial.birth)return invalid(field('start'),'起始日期不能早于出生月份。');
+        }
       }
-      if(form.isConnected){h().notify('过往经历已保存');leave();}
-    };
+      const current=person(id);
+      if(!current||JSON.stringify(current)!==fingerprint){h().notify('档案内容已更新，请重新编辑');leave();return;}
+      const draft=JSON.parse(JSON.stringify(current));
+      try{
+        if(remove)h().removeResumeEntry(draft,row);
+        else if(row)h().updateResumeEntry(draft,row,{start,end,actualDeptName,position,rank,roleEndUnknown:!!source.roleEndUnknown&&!end});
+        else{
+          const entry={start,end};
+          if(actualDeptName)entry.actualDeptName=actualDeptName;
+          h().updateRoleHistory(entry,position,rank);
+          draft.history=[...(draft.history||[]),entry];
+        }
+      }catch(err){invalid(field('name'),err.message);return;}
+      people()[people().indexOf(current)]=draft;
+      saving=true;form.querySelector('[type=submit]').disabled=true;
+      try{if(!await h().save())return;}
+      finally{saving=false;form.querySelector('[type=submit]').disabled=false;}
+      if(form.isConnected){h().notify(remove?'简历经历已删除':'简历经历已保存');leave();}
+    }
+    form.onsubmit=event=>{event.preventDefault();return commit(false);};
+    if(row){
+      const check=at('#pe-resume-delete-check');
+      const keep=()=>{check.hidden=true;at('#pe-resume-delete').hidden=false;h().subBack=leave;at('#pe-resume-delete').focus();};
+      on('#pe-resume-delete','click',()=>{check.hidden=false;at('#pe-resume-delete').hidden=true;h().subBack=keep;at('#pe-resume-keep').focus();});
+      on('#pe-resume-keep','click',keep);on('#pe-resume-remove','click',()=>commit(true));
+    }
     top();
   }
   function backButton(label) {return button('pe-back',icon('back')+label,'pe-back');}
@@ -190,23 +212,25 @@
     if(!p){finish();return;}
     h().subBack = finish;
     const a = h().age(p);
-    const timeline=h().roleTimeline(p);
-    const pastDepts=(p.deptHistory||[]).map((record,index)=>({record,index,months:h().historyMonths(record)}));
-    pastDepts.sort((a,b)=>b.months.end.localeCompare(a.months.end)||b.months.start.localeCompare(a.months.start)||b.index-a.index);
+    const timeline=h().resumeTimeline(p);
+    const periodKey=row=>[row.actualDeptName,(row.start||'').slice(0,7),(row.end||'').slice(0,7)].join('|');
+    const repeated=new Set(),seen=new Set();
+    timeline.forEach(row=>{const key=periodKey(row);if(seen.has(key))repeated.add(key);else seen.add(key);});
+    const lines=timeline.map((row,index)=>'<li data-resume-row="'+index+'"'+(row.timelineCurrent?' data-current-role':'')+'><div class="pe-resume-entry">'+resumeSummary(row,repeated.has(periodKey(row)))+'</div>'+
+      '<button type="button" class="secondary" data-edit-resume="'+index+'" aria-label="编辑'+esc(row.actualDeptName||'该段')+'经历">编辑</button></li>').join('');
     view().innerHTML = backButton('返回')+'<div class="heading"><h1>人员档案</h1>'+button('pe-edit','编辑','secondary')+'</div>'+
       '<section class="panel pe-identity"><div class="pe-sign"><strong>'+esc(p.name)+'</strong>'+workDepartment(p)+'</div><dl class="pe-details">'+
       detailField('性别',p.gender)+detailField('年龄',a == null || a === '' ? '' : a+' 岁')+
-      detailField(p.birth?'出生年月':'年龄登记日期',p.birth || p.ageAsOf)+detailField('学历',p.education)+detailField('人员类别',p.category)+(p.deptId!=null&&p.deptId!==''?detailField('实际到科室时间',p.deptSince):'')+'</dl></section>'+
-      (pastDepts.length ? '<section class="panel" id="pe-past-roles"><h2>过往经历</h2><ol class="pe-past-list">'+pastDepts.map(pastDepartment).join('')+'</ol></section>' : '')+
-      '<section class="panel"><h2>当前任职</h2><dl class="pe-details">'+detailField('职务',p.position)+detailField('任现职务时间',p.positionSince)+detailField('职级',p.rank)+detailField('任现职级时间',p.rankSince)+'</dl></section>'+
-      '<section class="panel" id="pe-job-history"><h2>任职经历</h2>'+(timeline.length ? '<ol class="pe-timeline">'+timeline.map(manualHistoryDetail).join('')+'</ol>' : '<p class="pe-muted">尚未登记历次任职。</p>')+'</section>'+
-      button('pe-delete','删除该档案','plain-btn danger')+'<div class="panel pe-confirm" id="pe-confirm" hidden><p>删除“'+esc(p.name)+'”及其任职经历？此操作无法撤销。</p><div class="action-row">'+button('pe-keep','保留档案')+button('pe-remove','确认删除','pe-destructive')+'</div></div>';
-    if(pastDepts.length)on('#pe-past-roles','click',event=>{
-      const edit=event.target.closest('[data-edit-dept-history]');
-      if(edit)editDepartmentHistory(p.id,Number(edit.dataset.editDeptHistory),finish);
+      detailField(p.birth?'出生年月':'年龄登记日期',p.birth || p.ageAsOf)+detailField('学历',p.education)+detailField('人员类别',p.category)+(p.deptId!=null&&p.deptId!==''?detailField('实际到科室时间',p.deptSince):'')+
+      detailField('现任职务',p.position)+detailField('任现职务时间',p.positionSince)+detailField('现职级',p.rank)+detailField('任现职级时间',p.rankSince)+'</dl></section>'+
+      '<section class="panel" id="pe-resume"><div class="panel-head"><h2 tabindex="-1">个人简历</h2>'+button('pe-add-resume',icon('add')+'添加经历','secondary')+'</div>'+
+      (lines?'<ol class="pe-resume-list">'+lines+'</ol>':'<p class="pe-muted">尚未登记经历。</p>')+'</section>'+
+      button('pe-delete','删除该档案','plain-btn danger')+'<div class="panel pe-confirm" id="pe-confirm" hidden><p>删除“'+esc(p.name)+'”及其个人简历？此操作无法撤销。</p><div class="action-row">'+button('pe-keep','保留档案')+button('pe-remove','确认删除','pe-destructive')+'</div></div>';
+    on('#pe-add-resume','click',()=>editResume(p.id,null,finish));
+    on('#pe-resume','click',event=>{
+      const edit=event.target.closest('[data-edit-resume]');
+      if(edit)editResume(p.id,timeline[Number(edit.dataset.editResume)],finish);
     });
-    const editCurrent=at('[data-edit-current-role]');
-    if(editCurrent)editCurrent.onclick=()=>{openPerson(p.id,finish);at('[name=position]').focus();};
     on('#pe-back','click',finish);on('#pe-edit','click',()=>openPerson(p.id,finish));
     const keep = ()=>{at('#pe-confirm').hidden=true;at('#pe-delete').hidden=false;h().subBack=finish;at('#pe-delete').focus();};
     on('#pe-delete','click',()=>{at('#pe-confirm').hidden=false;at('#pe-delete').hidden=true;h().subBack=keep;at('#pe-keep').focus();});
@@ -229,21 +253,14 @@
     const original=[values.otherType,values.otherTitle].filter(Boolean).join(' · ');
     return original?'<p class="pe-muted">原记录　'+esc(original)+'</p>':'';
   }
-  function manualHistoryDetail(entry){
-    const values=h().roleHistoryValues(entry);
-    return '<li'+(entry.timelineCurrent?' data-current-role':'')+'><span>'+esc(entry.start||'起始日期未登记')+(entry.end?' 至 '+esc(entry.end):entry.roleEndUnknown?' · 结束日期未登记':' 至今')+(entry.timelineCurrent?' · 当前任职':'')+'</span>'+
-      '<dl class="pe-history-roles">'+detailField('职务',values.position)+detailField('职级',values.rank)+'</dl>'+
-      otherHistoryRole(values)+'<span>实际工作科室 '+pretty(entry.actualDeptName)+'</span>'+(entry.timelineCurrent?'<button type="button" class="txt" data-edit-current-role>编辑当前任职</button>':'')+'</li>';
-  }
   function historyFields(item={},index='') {
     const values=h().roleHistoryValues(item);
-    const roleOptions=kind=>h().jobChoices(kind,values[kind]).map(([value,label])=>[value,label,!h().jobTitles[kind].includes(value)]);
     const today=h().today();
     const dateAttr=value=>'type="date" max="'+(value&&value>today?esc(value):today)+'"';
     return '<div class="pe-history-row" data-index="'+index+'"><div class="pe-history-head"><strong>任职记录</strong><button type="button" class="plain-btn danger" data-remove>移除此条</button></div>'+
       otherHistoryRole(values)+'<div class="fields pe-manual-fields">'+
-      select('historyPosition','职务',roleOptions('position'),values.position,'请选择')+
-      select('historyRank','职级',roleOptions('rank'),values.rank,'请选择')+
+      select('historyPosition','职务',roleOptions('position',values.position),values.position,'请选择')+
+      select('historyRank','职级',roleOptions('rank',values.rank),values.rank,'请选择')+
       input('historyActualDept','当时实际工作科室',item.actualDeptName,'list="pe-history-depts" maxlength="80" placeholder="选择或填写当时名称"')+
       input('historyStart','起始日期',item.start,dateAttr(item.start)+(index===''||item.start?' required':''))+
       input('historyEnd',item.roleEndUnknown?'结束日期（原记录未登记）':'结束日期（至今可留空）',item.end,dateAttr(item.end))+'</div></div>';
@@ -271,10 +288,9 @@
       const date=prefill[axis.key]||draft[axis.since]||dateDefault;
       return '<label>'+axis.dateLabel+'<input id="'+axis.input+'" type="date" required max="'+today+'" min="'+esc(earliest(axis))+'" value="'+esc(date)+'"></label>';
     }).join('');
-    const info=deptChange&&String(previous.deptId??'')?'原工作科室「'+esc(h().deptName(previous.deptId))+'」也会记入过往经历。':'';
     dialog.innerHTML='<div class="panel pe-transfer-card"><h2 tabindex="-1" id="pe-transfer-heading">'+(deptChange&&axes.length===1?'确认科室变更':'确认任职变更')+'</h2>'+
       '<p id="pe-transfer-route"><b>'+esc(draft.name)+'</b>'+routes+'</p>'+
-      '<div class="pe-transfer-summary"><p>按生效日期衔接前后任职经历。'+info+'</p></div>'+
+      '<div class="pe-transfer-summary"><p>确认后，前后任期将按生效日期记入个人简历。</p></div>'+
       '<div class="pe-change-dates">'+fields+'</div><p role="alert" id="pe-transfer-error" class="pe-form-error" hidden></p>'+
       button('pe-transfer-record','确认变动并记录经历','primary')+
       '<p class="hint">测试或录入有误时，可仅更正当前资料。</p>'+
@@ -342,6 +358,23 @@
     const mode = p.age != null && p.age!=='' && !p.birth ? 'age' : 'birth';
     const date = 'type="date" max="'+today+'"';
     const originalId=p.deptId==null?'':String(p.deptId);
+    const resume=existing?h().resumeTimeline(p):[];
+    const links=new Map();
+    resume.forEach((row,resumeIndex)=>{
+      if(!(row.timelineCurrent||row.deptHistoryIndices.length||row.coveredDeptIndices?.length||row.historyIndices.length>1))return;
+      for(const i of row.historyIndices){
+        if(!links.has(i))links.set(i,[]);
+        links.get(i).push(resumeIndex);
+      }
+    });
+    const manual=(p.history||[]).map((entry,index)=>{
+      const indices=links.get(index);
+      if(!indices)return historyFields(entry,index);
+      const linked=resume[indices[0]];
+      return '<div class="pe-history-row" data-index="'+index+'" data-shared-history><div class="pe-resume-entry">'+resumeSummary(linked)+'</div>'+
+        '<button type="button" class="txt" data-open-linked="'+index+'">'+(indices.length===1&&linked.timelineCurrent?'编辑当前任职':'在个人简历中编辑')+'</button></div>';
+    }).join('');
+
     view().innerHTML = backButton('返回')+'<div class="heading"><h1>'+ (existing ? '编辑人员' : '录入人员')+'</h1><span class="hint">* 必填</span></div>'+
       '<form id="pe-form"><section class="panel"><h2>基本资料</h2><div class="fields pe-form-fields">'+input('name','姓名 *',p.name,'required maxlength="80" autocomplete="off"')+
       select('gender','性别',choices(['女','男','未登记']),p.gender || '未登记','请选择')+customSelect('education','学历',[...education,p.education,...people().map(z=>z.education)],p.education)+
@@ -355,20 +388,23 @@
       input('deptSince','实际到科室时间',p.deptSince,date)+'</div></section>'+
       '<section class="panel"><h2>当前任职</h2><div class="fields pe-form-fields">'+select('position','现任职务',h().jobChoices('position',p.position),p.position,'未登记')+
       input('positionSince','任现职务时间',p.positionSince,date)+select('rank','现职级',h().jobChoices('rank',p.rank),p.rank,'未登记')+input('rankSince','任现职级时间',p.rankSince,date)+
-      '</div></section><section class="panel"><div class="panel-head"><h2>任职经历</h2>'+button('pe-add-history',icon('add')+'添加经历','secondary')+
-      '</div>'+historyDeptNames()+'<div id="pe-history">'+(p.history||[]).map(historyFields).join('')+'</div><p class="pe-muted" id="pe-history-empty">同一段经历可同时登记职务和职级。</p></section>'+
+      '</div></section><section class="panel"><div class="panel-head"><h2>简历经历</h2>'+button('pe-add-history',icon('add')+'添加经历','secondary')+
+      '</div>'+historyDeptNames()+'<div id="pe-history">'+manual+'</div><p class="pe-muted" id="pe-history-empty">同一段经历可同时登记职务和职级。</p></section>'+
       '<p role="alert" class="pe-form-error" id="pe-error" hidden></p><div class="pe-save"><button type="submit" class="primary">保存档案</button>'+button('pe-cancel','取消')+'</div></form>'+
-      '<section class="panel pe-confirm" id="pe-discard" hidden><p>放弃尚未保存的修改？</p><div class="action-row">'+button('pe-resume','继续编辑')+button('pe-leave','放弃修改','pe-destructive')+'</div></section>';
+      '<section class="panel pe-confirm" id="pe-discard" hidden><p>放弃尚未保存的修改？</p><div class="action-row">'+button('pe-discard-resume','继续编辑')+button('pe-leave','放弃修改','pe-destructive')+'</div></section>';
     const form=at('#pe-form');
     const field=key=>form.elements.namedItem(key);
     let dirty=false, saving=false, lastDecision=null;
+    let afterDiscard=leave;
     const closeDiscard=()=>{at('#pe-discard').hidden=true;h().subBack=tryLeave;};
-    function tryLeave(){
-      if(!dirty){leave();return;}
-      at('#pe-discard').hidden=false;h().subBack=closeDiscard;at('#pe-resume').focus();
+    function switchView(next){
+      if(!dirty){next();return;}
+      afterDiscard=next;
+      at('#pe-discard').hidden=false;h().subBack=closeDiscard;at('#pe-discard-resume').focus();
     }
+    function tryLeave(){switchView(leave);}
     h().subBack=tryLeave;
-    on('#pe-back','click',tryLeave);on('#pe-cancel','click',tryLeave);on('#pe-resume','click',closeDiscard);on('#pe-leave','click',leave);
+    on('#pe-back','click',tryLeave);on('#pe-cancel','click',tryLeave);on('#pe-discard-resume','click',closeDiscard);on('#pe-leave','click',()=>afterDiscard());
     const syncMode=()=>{
       for(const k of ['birth','age']){
         const hidden=field('ageMode').value!==k;
@@ -402,7 +438,19 @@
       }
     });
     on('#pe-add-history','click',()=>{at('#pe-history').insertAdjacentHTML('beforeend',historyFields());setDirty();syncHistory();at('#pe-history').lastElementChild.querySelector('[name=historyPosition]').focus();});
-    on('#pe-history','click',e=>{const btn=e.target.closest('[data-remove]');if(btn){btn.closest('.pe-history-row').remove();setDirty();syncHistory();}});
+    on('#pe-history','click',e=>{
+      const btn=e.target.closest('[data-remove]');
+      if(btn){btn.closest('.pe-history-row').remove();setDirty();syncHistory();return;}
+      const link=e.target.closest('[data-open-linked]');
+      if(!link)return;
+      const indices=links.get(Number(link.dataset.openLinked));
+      const target=resume[indices[0]];
+      if(indices.length===1&&target.timelineCurrent){field('position').focus();return;}
+      switchView(()=>{
+        if(indices.length===1){editResume(p.id,target,finish);return;}
+        showPerson(p.id,finish);at('#pe-resume').scrollIntoView({block:'start'});
+      });
+    });
     function invalid(el,message){at('#pe-error').textContent=message;at('#pe-error').hidden=false;el.focus();h().notify(message);return false;}
     form.addEventListener('submit', async event=>{
       event.preventDefault();
@@ -436,6 +484,7 @@
         const el=k=>row.querySelector('[name=history'+k+']');
         const existingRow=row.dataset.index!=='';
         const original=existingRow?p.history[Number(row.dataset.index)]:{};
+        if(row.hasAttribute('data-shared-history')){data.history.push({...original});continue;}
         const entry={...original};
         try{
           h().updateRoleHistory(entry,el('Position').value,el('Rank').value);
@@ -448,7 +497,7 @@
         if(startChanged||endChanged){
           if(startChanged&&start>today)return invalid(el('Start'),'起始日期不能晚于今天。');
           if(endChanged&&end>today)return invalid(el('End'),'结束日期不能晚于今天。');
-          if(data.birth&&start&&start.slice(0,7)<data.birth)return invalid(el('Start'),'任职经历不能早于出生月份。');
+          if(data.birth&&start&&start.slice(0,7)<data.birth)return invalid(el('Start'),'经历不能早于出生月份。');
           if(start&&end&&end<start)return invalid(el('End'),'结束日期不能早于起始日期。');
         }
         if(startChanged)entry.start=start;
