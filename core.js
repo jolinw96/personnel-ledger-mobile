@@ -51,8 +51,15 @@
     ]
   };
   const separateRankTitles=new Set(quotaGroups.ranks.filter(group=>group.allowSeparate).flatMap(group=>group.titles));
-  const separateRankEligible=rank=>separateRankTitles.has(rank);
-  const separateRank=person=>person.rankSeparate===true && separateRankEligible(person.rank);
+  function isDoctoralEducation(education){
+    const label=String(education||"").normalize("NFKC").trim().replace(/\s+/g,"");
+    if(/^研究生(?:学历)?[(\/]博士(?:研究生)?\)?$/.test(label))return true;
+    const primary=label.split(/[(\/、,]/)[0];
+    return /^(?:全日制|非全日制|在职)?(?:[\u4e00-\u9fff]{1,8}学|工程|教育|专业)?博士(?:研究生|学位|学历|后)?(?:毕业)?$/.test(primary) ||
+      /^(?:ph\.?d\.?|doctorate|doctorofphilosophy)$/i.test(primary);
+  }
+  const separateRankEligible=(rank,education)=>separateRankTitles.has(rank) && !isDoctoralEducation(education);
+  const separateRank=person=>person.rankSeparate===true && separateRankEligible(person.rank,person.education);
   const quotaKeys=new Set([...quotaGroups.positions,...quotaGroups.ranks].map(group=>group.key));
   const quotaValue=value=>Number.isSafeInteger(value)&&value>=0;
   function validPostQuotas(quotas){
@@ -830,6 +837,7 @@
     }
     for(const p of data.people){
       if(p.birth)p.birth=p.birth.slice(0,7);
+      if(p.rankSeparate===true && isDoctoralEducation(p.education))p.rankSeparate=false;
     }
     if(!separateCatalogs)migrateCatalogs(data);
     if(!separateCatalogs || data.quotaCatalogVersion!==quotaCatalogVersion)mergeReferenceQuotas(data);
@@ -893,5 +901,5 @@
       const n=Number(when.slice(0,4))-Number(p.birth.slice(0,4))-(when.slice(5,7)<p.birth.slice(5,7)?1:0);
       return Number.isFinite(n)&&n>=0?n:null;
     },isUnreadable:()=>unreadable, raw:()=>localStorage.getItem(key)};
-  Object.assign(HR,{jobTitles,jobChoices,roleHistoryValues,updateRoleHistory,roleTimeline,resumeTimeline,updateResumeEntry,removeResumeEntry,syncRoleHistory,isMonth,historyMonths,updateHistoryMonths,quotaGroups,staffGroup,separateRankEligible,separateRank,unitTarget,clearUnitTargetOverride});
+  Object.assign(HR,{jobTitles,jobChoices,roleHistoryValues,updateRoleHistory,roleTimeline,resumeTimeline,updateResumeEntry,removeResumeEntry,syncRoleHistory,isMonth,historyMonths,updateHistoryMonths,quotaGroups,staffGroup,isDoctoralEducation,separateRankEligible,separateRank,unitTarget,clearUnitTargetOverride});
 })();
