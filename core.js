@@ -19,10 +19,11 @@
   const mergedReferenceCatalogVersion=2;
   const quotaCatalogVersion=3;
   const rankPresets = {research12:12,research34:20,principal12:50,principal34:50};
+  const defaultRetirementYears = window.Promotion?.defaultRetirementYears ?? 1;
   const makeUnits = (presets=unitPresets) => presets.map(([id,name,categoryGroup,quota,chiefQuota,deputyQuota])=>({id,name,categoryGroup,quota,chiefQuota,deputyQuota}));
   const initial = () => ({
     people:[],depts:deptNames.map((name,i)=>({id:"a"+(i+1),name,parentId:""})),
-    establishmentUnits:makeUnits(),quotaCatalogVersion,policies:[],unitPostQuotas:{...rankPresets}
+    establishmentUnits:makeUnits(),quotaCatalogVersion,promotionRules:{},unitPostQuotas:{...rankPresets}
   });
   const has = (obj,key) => Object.prototype.hasOwnProperty.call(obj,key);
   const esc = str => String(str==null?"":str).replace(/[&<>"']/g,c=>({"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;","'":"&#39;"}[c]));
@@ -829,12 +830,12 @@
   }
   function validate(data){
     const bad = () => {throw Error("备份格式或数据关联有误");};
-    if(!data || !["people","depts","policies"].every(k=>Array.isArray(data[k]))) bad();
+    if(!data || !["people","depts"].every(k=>Array.isArray(data[k]))) bad();
     const separateCatalogs=has(data,"establishmentUnits");
     const catalogVersion=data.quotaCatalogVersion;
     if(has(data,"quotaCatalogVersion") && catalogVersion!==mergedReferenceCatalogVersion && catalogVersion!==quotaCatalogVersion)bad();
     if(separateCatalogs && !Array.isArray(data.establishmentUnits))bad();
-    const lists=[data.people,data.depts,data.policies];
+    const lists=[data.people,data.depts];
     if(separateCatalogs)lists.push(data.establishmentUnits);
     for(const list of lists){
       if(!list.every(x=>x && typeof x==="object" && idOK(x.id))||new Set(list.map(x=>String(x.id))).size!==list.length) bad();
@@ -868,13 +869,18 @@
       )))bad();
       if(["gender","education","category","rank","position"].some(k=>p[k]!=null&&typeof p[k]!=="string"))bad();
       if(has(p,"rankSeparate") && typeof p.rankSeparate!=="boolean")bad();
+      if(has(p,"retirementYearsRemaining") && (!Number.isFinite(p.retirementYearsRemaining) ||
+        p.retirementYearsRemaining<0 || p.retirementYearsRemaining>120))bad();
       if(!isMonth(p.birth)&&!isDate(p.birth))bad();
       if(!isDate(p.roleTimelineSince))bad();
       if(["ageAsOf","deptSince","rankSince","positionSince"].some(k=>!isDate(p[k])))bad();
       if(p.age!=null&&p.age!==""&&(!Number.isInteger(Number(p.age))||+p.age<0||+p.age>130))bad();
       if(p.history!=null && (!Array.isArray(p.history)||!p.history.every(validRoleEntry)))bad();
     }
-    if(typeof window.validatePolicies==="function"&&!window.validatePolicies(data.policies))bad();
+    if(has(data,"promotionRules")){
+      if(window.Promotion && !window.Promotion.validRules(data.promotionRules))bad();
+    }else data.promotionRules={};
+    delete data.policies;
     if(has(data,"unitPostQuotas")){
       if(!validPostQuotas(data.unitPostQuotas))bad();
     }else{
@@ -882,6 +888,7 @@
     }
     for(const p of data.people){
       if(p.birth)p.birth=p.birth.slice(0,7);
+      if(!has(p,"retirementYearsRemaining"))p.retirementYearsRemaining=defaultRetirementYears;
     }
     if(!separateCatalogs)migrateCatalogs(data);
     if(!separateCatalogs || catalogVersion===undefined)mergeReferenceQuotas(data);
@@ -933,7 +940,7 @@
     const raw=JSON.stringify(data);
     localStorage.setItem(key,raw);HR.state=data;snapshot=raw;unreadable=false;
   }
-  const HR=window.HR={state,save,restore,validate,initial,esc,icon,today,notify,subBack:null,container:()=>document.getElementById("content"),
+  const HR=window.HR={state,save,restore,validate,initial,esc,icon,today,notify,defaultRetirementYears,subBack:null,container:()=>document.getElementById("content"),
     departmentResume,
     deptName:id=>{if(id==="")return "未分配科室";const d=HR.state.depts.find(d=>String(d.id)===String(id));return d?d.name:"未登记";},
     rememberDept:(person,previous=person,effectiveDate="")=>{

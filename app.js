@@ -358,7 +358,7 @@
     H.subBack=()=>go("overview");click("local-back",H.subBack);
     click("export",()=>{
       if(!window.LocalFiles){H.notify("无法打开文件下载，请重新打开应用");return;}
-      const out=H.isUnreadable()?H.raw():JSON.stringify({format:"hr-local-ledger",version:6,exportedAt:new Date().toISOString(),data:H.state});
+      const out=H.isUnreadable()?H.raw():JSON.stringify({format:"hr-local-ledger",version:7,exportedAt:new Date().toISOString(),data:H.state});
       window.LocalFiles.exportBackup(out);
     });
     click("import",()=>{
@@ -370,10 +370,11 @@
   window.onBackupFile=text=>{
     try{
       const file=JSON.parse(text);
-      if(!file||file.format!=="hr-local-ledger"||![1,2,3,4,5,6].includes(file.version))throw Error("请选择本应用导出的第 1 至 6 版 JSON 备份");
+      if(!file||file.format!=="hr-local-ledger"||![1,2,3,4,5,6,7].includes(file.version))throw Error("请选择本应用导出的第 1 至 7 版 JSON 备份");
       H.validate(file.data);
       const d=file.data;
-      if(confirm("用备份中的 "+d.people.length+" 人、"+d.depts.length+" 个工作科室、"+d.establishmentUnits.length+" 项编制指标、"+d.policies.length+" 条规则替换当前台账？")){H.restore(d);orgOpen.clear();go("overview");H.notify("台账已恢复");}
+      const promotionTargets=Object.keys(d.promotionRules).length;
+      if(confirm("用备份中的 "+d.people.length+" 人、"+d.depts.length+" 个工作科室、"+d.establishmentUnits.length+" 项编制指标和 "+promotionTargets+" 个目标职级的晋升设置替换当前台账？")){H.restore(d);orgOpen.clear();go("overview");H.notify("台账已恢复");}
     }catch(err){H.notify("恢复失败，原数据已保留。"+(err instanceof SyntaxError?"文件内容有误":err.message));}
   };
   window.handleAndroidBack=()=>{if(typeof H.subBack==="function"){H.subBack();return true;}if(page!=="overview"){go("overview");return true;}return false;};

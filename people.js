@@ -494,6 +494,7 @@
       const get=key=>field(key).value.trim();
       if(!get('name'))return invalid(field('name'),'请填写姓名。');
       const data=Object.assign({},p);
+      if(data.retirementYearsRemaining==null)data.retirementYearsRemaining=h().defaultRetirementYears;
       for(const k of ['name','gender','education','category','rank','position','rankSince','positionSince'])data[k]=get(k);
       const selected=get('deptId');
       const department=departments.find(([key])=>String(key)===selected);
