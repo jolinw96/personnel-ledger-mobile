@@ -429,28 +429,21 @@
       field(axis.since).disabled=!selected;
     }
     function syncRankSeparate(checked){
-      const selected=field('education').value;
-      const education=selected==='__custom__'?field('educationOther').value:selected;
-      const available=h().separateRankEligible(field('rank').value,education);
+      const available=h().separateRankEligible(field('rank').value);
       const mark=field('rankSeparate');
       mark.disabled=!available;
       mark.checked=available&&checked;
-      at('#pe-rank-hint').textContent=h().isDoctoralEducation(education)?'博士不单列，占用对应职级职数。':
-        available?'按实际单列资格勾选。':'适用于三、四级主任科员和三、四级调研员。';
+      at('#pe-rank-hint').textContent=available?'单列人员计入实有，不占该职级职数。':'请先选择现职级。';
     }
     syncMode();syncHistory();changeAxes.forEach(syncSince);syncRankSeparate(h().separateRank(p));
     function setDirty(){dirty=true;at('#pe-error').hidden=true;}
-    form.addEventListener('input',e=>{
-      setDirty();
-      if(e.target.name==='educationOther')syncRankSeparate(field('rankSeparate').checked);
-    });
+    form.addEventListener('input',setDirty);
     form.addEventListener('change',e=>{
       setDirty();
       if(e.target.name==='ageMode')syncMode();
       const axis=changeAxes.find(axis=>axis.field===e.target.name);
       if(axis)syncSince(axis);
       if(e.target.name==='rank')syncRankSeparate(false);
-      if(e.target.name==='education'||e.target.name==='educationOther')syncRankSeparate(field('rankSeparate').checked);
       if(['education','category'].includes(e.target.name)){
         const other=field(e.target.name+'Other');
         other.disabled=e.target.value!=='__custom__';other.required=!other.disabled;other.parentElement.hidden=other.disabled;
@@ -489,7 +482,7 @@
         data[k]=get(k+'Other');
         if(!data[k] || data[k]==='__custom__')return invalid(field(k+'Other'),'请填写'+(k==='education'?'学历':'人员类别')+'。');
       }
-      data.rankSeparate=h().separateRankEligible(data.rank,data.education)&&field('rankSeparate').checked;
+      data.rankSeparate=h().separateRankEligible(data.rank)&&field('rankSeparate').checked;
       for(const [k,label] of [['position','职务'],['rank','职级']]) {
         if(!data[k] && data[k+'Since'])return invalid(field(k),'请选择对应的'+label+'。');
       }

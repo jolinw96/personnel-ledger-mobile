@@ -105,15 +105,16 @@
         const quota=H.unitTarget(slot.key);
         const actual=counts.get(slot.key)||0;
         const separate=separateCounts.get(slot.key)||0;
-        const separateCell=rankTable?'<td data-separate-count>'+(slot.allowSeparate?separate:"—")+'</td>':"";
+        const separateCell=rankTable?'<td data-separate-count>'+separate+'</td>':"";
         totalQuota=totalQuota==null||quota==null?null:totalQuota+quota;
         totalActual+=actual;
         return '<tr data-vacancy="'+e(slot.key)+'"><th scope="row">'+e(slot.label)+'</th><td><button type="button" class="staff-edit" data-edit-unit="'+e(slot.key)+'" aria-label="设置'+e(slot.label)+'的单位名额">'+(quota==null?"未设置":quota)+'</button></td><td>'+actual+'</td>'+separateCell+'<td data-vacant-total>'+formatGap(quota,actual-separate)+'</td></tr>';
       }).join("");
       if(!Number.isSafeInteger(totalQuota))totalQuota=null;
       const footer=rankTable?"":'<tfoot><tr data-position-total><th scope="row">职务合计</th><td>'+(totalQuota??"—")+'</td><td>'+totalActual+'</td><td>'+formatGap(totalQuota,totalActual)+'</td></tr></tfoot>';
-      const note=rankTable?'<p class="hint staff-note">单列人员计入实有。三、四级调研员和三、四级主任科员的空缺＝核定－实有＋单列。</p>':"";
-      return '<section class="post-section"><h3>'+title+'</h3>'+note+'<table class="staff-table post-table'+(rankTable?' rank-table':'')+'" aria-label="'+title+'"><thead><tr><th scope="col">'+category+'</th><th scope="col">核定</th><th scope="col">实有</th>'+(rankTable?'<th scope="col">单列</th>':'')+'<th scope="col">空缺</th></tr></thead><tbody>'+rows+'</tbody>'+footer+'</table></section>';
+      const note=rankTable?'<p class="hint staff-note">各职级空编＝编制数－实有数＋单列数。实有数包含单列人员。</p>':"";
+      const columns=rankTable?[category,"编制数","实有数","单列数","空编"]:[category,"核定","实有","空缺"];
+      return '<section class="post-section"><h3>'+title+'</h3>'+note+'<table class="staff-table post-table'+(rankTable?' rank-table':'')+'" aria-label="'+title+'"><thead><tr>'+columns.map(label=>'<th scope="col">'+label+'</th>').join("")+'</tr></thead><tbody>'+rows+'</tbody>'+footer+'</table></section>';
     }
     return '<div class="unit-quota-head"><span>全单位</span><button type="button" class="secondary" id="edit-unit-quotas">设置单位名额</button></div>'+
       '<p class="hint staff-note">职务按人员类别统计，职级合计公务员与参公人员。</p>'+
