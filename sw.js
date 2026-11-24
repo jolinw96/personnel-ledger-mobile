@@ -1,6 +1,6 @@
 /* Only the static app shell is cached. Personnel and backups stay in local storage or Files. */
 const prefix = "personnel-ledger:" + self.registration.scope + ":";
-const revision = "1.17-release-1";
+const revision = "1.18-release-1";
 const cacheName = prefix + revision;
 const files = [
   "./","app.css","app.js","core.js","people.css","people.js","policy.css","policy.js",

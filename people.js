@@ -213,11 +213,26 @@
     h().subBack = finish;
     const a = h().age(p);
     const timeline=h().resumeTimeline(p);
-    const periodKey=row=>[row.actualDeptName,(row.start||'').slice(0,7),(row.end||'').slice(0,7)].join('|');
-    const repeated=new Set(),seen=new Set();
-    timeline.forEach(row=>{const key=periodKey(row);if(seen.has(key))repeated.add(key);else seen.add(key);});
-    const lines=timeline.map((row,index)=>'<li data-resume-row="'+index+'"'+(row.timelineCurrent?' data-current-role':'')+'><div class="pe-resume-entry">'+resumeSummary(row,repeated.has(periodKey(row)))+'</div>'+
-      '<button type="button" class="secondary" data-edit-resume="'+index+'" aria-label="编辑'+esc(row.actualDeptName||'该段')+'经历">编辑</button></li>').join('');
+    const departments=h().departmentResume(p,timeline);
+    const editRecord=(row,index)=>'<button type="button" class="secondary" data-edit-resume="'+index+'" aria-label="编辑'+esc(row.actualDeptName||'该段')+'经历">编辑</button>';
+    const recorded=new Set();
+    const lines=departments.map((row,index)=>{
+      const refs=row.recordIndices;
+      const record=refs.length===1?timeline[refs[0]]:null;
+      let action='';
+      if(row.timelineCurrent)action='<button type="button" class="secondary" id="pe-edit-current-dept" aria-label="编辑当前科室经历">编辑</button>';
+      else if(record&&row.start===record.start&&row.end===record.end){
+        if(!record.position&&!record.rank&&!record.otherType&&!record.otherTitle)recorded.add(refs[0]);
+        action=editRecord(row,refs[0]);
+      }else if(refs.length){
+        action='<button type="button" class="secondary" data-show-resume-record="'+refs[0]+'">查看经历</button>';
+      }
+      return '<li data-resume-row="'+index+'"'+(row.timelineCurrent?' data-current-role':'')+'><div class="pe-resume-entry">'+resumeSummary(row)+'</div>'+action+'</li>';
+    }).join('');
+    const records=timeline.map((row,index)=>{
+      if(recorded.has(index) || (row.timelineCurrent&&row.actualDeptName&&departments.some(d=>d.timelineCurrent)))return '';
+      return '<li data-resume-record="'+index+'"><div class="pe-resume-entry">'+resumeSummary(row,true)+'</div>'+editRecord(row,index)+'</li>';
+    }).join('');
     view().innerHTML = backButton('返回')+'<div class="heading"><h1>人员档案</h1>'+button('pe-edit','编辑','secondary')+'</div>'+
       '<section class="panel pe-identity"><div class="pe-sign"><strong>'+esc(p.name)+'</strong>'+workDepartment(p)+'</div><dl class="pe-details">'+
       detailField('性别',p.gender)+detailField('年龄',a == null || a === '' ? '' : a+' 岁')+
@@ -226,12 +241,20 @@
       (h().separateRankEligible(p.rank)?'<div data-rank-separate><dt>是否单列</dt><dd>'+(h().separateRank(p)?'是':'否')+'</dd></div>':'')+
       detailField('任现职级时间',p.rankSince)+'</dl></section>'+
       '<section class="panel" id="pe-resume"><div class="panel-head"><h2 tabindex="-1">个人简历</h2>'+button('pe-add-resume',icon('add')+'添加经历','secondary')+'</div>'+
-      (lines?'<ol class="pe-resume-list">'+lines+'</ol>':'<p class="pe-muted">尚未登记经历。</p>')+'</section>'+
+      (lines?'<ol class="pe-resume-list">'+lines+'</ol>':'')+
+      (records?(lines?'<details class="pe-resume-records"><summary>任职明细</summary>':'')+'<ol class="pe-resume-list">'+records+'</ol>'+(lines?'</details>':''):'')+
+      (lines||records?'':'<p class="pe-muted">尚未登记经历。</p>')+'</section>'+
       button('pe-delete','删除该档案','plain-btn danger')+'<div class="panel pe-confirm" id="pe-confirm" hidden><p>删除“'+esc(p.name)+'”及其个人简历？此操作无法撤销。</p><div class="action-row">'+button('pe-keep','保留档案')+button('pe-remove','确认删除','pe-destructive')+'</div></div>';
     on('#pe-add-resume','click',()=>editResume(p.id,null,finish));
+    on('#pe-edit-current-dept','click',()=>{openPerson(p.id,finish);at('[name=deptSince]').focus();});
     on('#pe-resume','click',event=>{
       const edit=event.target.closest('[data-edit-resume]');
       if(edit)editResume(p.id,timeline[Number(edit.dataset.editResume)],finish);
+      const show=event.target.closest('[data-show-resume-record]');
+      if(show){
+        at('.pe-resume-records').open=true;
+        at('[data-resume-record="'+show.dataset.showResumeRecord+'"] [data-edit-resume]').focus();
+      }
     });
     on('#pe-back','click',finish);on('#pe-edit','click',()=>openPerson(p.id,finish));
     const keep = ()=>{at('#pe-confirm').hidden=true;at('#pe-delete').hidden=false;h().subBack=finish;at('#pe-delete').focus();};

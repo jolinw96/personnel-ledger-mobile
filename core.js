@@ -16,8 +16,9 @@
     ["u-reference","参公编制","reference",68,4,10],
     ["u-institution","事业编制","institution",22,1,3]
   ];
-  const quotaCatalogVersion=2;
-  const rankPresets = {research34:20,principal12:50,principal34:50};
+  const mergedReferenceCatalogVersion=2;
+  const quotaCatalogVersion=3;
+  const rankPresets = {research12:12,research34:20,principal12:50,principal34:50};
   const makeUnits = (presets=unitPresets) => presets.map(([id,name,categoryGroup,quota,chiefQuota,deputyQuota])=>({id,name,categoryGroup,quota,chiefQuota,deputyQuota}));
   const initial = () => ({
     people:[],depts:deptNames.map((name,i)=>({id:"a"+(i+1),name,parentId:""})),
@@ -29,7 +30,7 @@
   const today = () => iso(new Date());
   const jobTitles = {
     position:["科长","副科长"],
-    rank:["三级调研员","四级调研员","一级主任科员","二级主任科员","三级主任科员","四级主任科员","一级科员","七级职员","八级职员","九级职员"]
+    rank:["一级调研员","二级调研员","三级调研员","四级调研员","一级主任科员","二级主任科员","三级主任科员","四级主任科员","一级科员","七级职员","八级职员","九级职员"]
   };
   const staffCategories = new Map([
     ...["公务员","公务员(行政编)","公务员(行政编制)","行政编","行政编制"].map(name=>[name,"civil"]),
@@ -45,6 +46,7 @@
       {key:"referenceDeputy",label:"参公副科长",group:"reference",title:"副科长"}
     ],
     ranks:[
+      {key:"research12",label:"一、二级调研员",titles:["一级调研员","二级调研员"]},
       {key:"research34",label:"三、四级调研员",titles:["三级调研员","四级调研员"]},
       {key:"principal12",label:"一、二级主任科员",titles:["一级主任科员","二级主任科员"]},
       {key:"principal34",label:"三、四级主任科员",titles:["三级主任科员","四级主任科员"]}
@@ -112,7 +114,6 @@
         data.establishmentUnits.push(u);
       }
     }
-    data.quotaCatalogVersion=quotaCatalogVersion;
   }
   function migrateCatalogs(data){
     const original=data.depts;
@@ -567,6 +568,57 @@
     const end=r=>r.end || (!r.roleEndUnknown?"9999-12-31":r.start||"");
     return rows.sort((a,b)=>Number(b.timelineCurrent)-Number(a.timelineCurrent)||end(b).localeCompare(end(a))||b.start.localeCompare(a.start));
   }
+  function departmentResume(person, records){
+    const currentName=workName(person);
+    const current=currentName?{actualDeptName:currentName,start:person.deptSince||"",end:"",timelineCurrent:true}:null;
+    // After an archived period has been split to allow editing, its edited pieces
+    // represent the recorded dates instead of the original transfer snapshot.
+    const archived=(person.deptHistory||[]).filter(h=>!Array.isArray(h.resumeParts)||h.resumeDirect).map(h=>{
+      const {actualDeptName,start,end}=archiveSpan(h);
+      return {actualDeptName,start,end};
+    });
+    const assignments=current?[...archived,current]:archived;
+    const endOf=row=>row.end||(row.roleEndUnknown?row.start:"9999-12-31");
+    const overlaps=(a,b)=>{
+      const width=isMonth(a.start)||isMonth(a.end)||isMonth(b.start)||isMonth(b.end)?7:10;
+      return a.start.slice(0,width)<=endOf(b).slice(0,width) && b.start.slice(0,width)<=endOf(a).slice(0,width);
+    };
+    const touches=(a,b)=>{
+      if(overlaps(a,b))return true;
+      return exactDay(a.end)&&exactDay(b.start)&&nextDay(a.end)===b.start;
+    };
+    const extras=new Map();
+    for(const row of records){
+      const name=row.actualDeptName;
+      if(!name || row.timelineCurrent || assignments.some(a=>a.actualDeptName===name&&overlaps(a,row)))continue;
+      if(!extras.has(name))extras.set(name,[]);
+      extras.get(name).push(row);
+    }
+    const rows=assignments.slice();
+    for(const group of extras.values()){
+      let previous;
+      for(const row of group.sort((a,b)=>a.start.localeCompare(b.start))){
+        if(previous?.start && row.start && !previous.roleEndUnknown && touches(previous,row)){
+          if(endOf(row)>endOf(previous)){
+            previous.end=row.end;
+            previous.roleEndUnknown=row.roleEndUnknown;
+          }
+        }else{
+          previous={actualDeptName:row.actualDeptName,start:row.start,end:row.end,roleEndUnknown:row.roleEndUnknown};
+          rows.push(previous);
+        }
+      }
+    }
+    const result=[];
+    for(const row of rows){
+      if(result.some(r=>r.actualDeptName===row.actualDeptName && r.start===row.start && r.end===row.end &&
+        !!r.timelineCurrent===!!row.timelineCurrent && !!r.roleEndUnknown===!!row.roleEndUnknown))continue;
+      result.push({...row,recordIndices:records.map((r,index)=>r.actualDeptName===row.actualDeptName && !r.timelineCurrent &&
+        overlaps(row,r)?index:-1).filter(i=>i>=0)});
+    }
+    return result.sort((a,b)=>Number(!!b.timelineCurrent)-Number(!!a.timelineCurrent)||
+      endOf(b).localeCompare(endOf(a))||b.start.localeCompare(a.start));
+  }
   function resumePiece(r){
     return {start:r.start,end:r.end,actualDeptName:r.actualDeptName,position:r.position,rank:r.rank,otherType:r.otherType||"",otherTitle:r.otherTitle||"",
       roleEndUnknown:!!r.roleEndUnknown,timelineCurrent:false,timelineDerived:false};
@@ -779,7 +831,8 @@
     const bad = () => {throw Error("备份格式或数据关联有误");};
     if(!data || !["people","depts","policies"].every(k=>Array.isArray(data[k]))) bad();
     const separateCatalogs=has(data,"establishmentUnits");
-    if(has(data,"quotaCatalogVersion") && data.quotaCatalogVersion!==quotaCatalogVersion)bad();
+    const catalogVersion=data.quotaCatalogVersion;
+    if(has(data,"quotaCatalogVersion") && catalogVersion!==mergedReferenceCatalogVersion && catalogVersion!==quotaCatalogVersion)bad();
     if(separateCatalogs && !Array.isArray(data.establishmentUnits))bad();
     const lists=[data.people,data.depts,data.policies];
     if(separateCatalogs)lists.push(data.establishmentUnits);
@@ -831,7 +884,11 @@
       if(p.birth)p.birth=p.birth.slice(0,7);
     }
     if(!separateCatalogs)migrateCatalogs(data);
-    if(!separateCatalogs || data.quotaCatalogVersion!==quotaCatalogVersion)mergeReferenceQuotas(data);
+    if(!separateCatalogs || catalogVersion===undefined)mergeReferenceQuotas(data);
+    if(catalogVersion!==quotaCatalogVersion && !has(data.unitPostQuotas,"research12")){
+      data.unitPostQuotas.research12=rankPresets.research12;
+    }
+    data.quotaCatalogVersion=quotaCatalogVersion;
     for(const d of data.depts){
       delete d.quota;
       delete d.postQuotas;
@@ -877,6 +934,7 @@
     localStorage.setItem(key,raw);HR.state=data;snapshot=raw;unreadable=false;
   }
   const HR=window.HR={state,save,restore,validate,initial,esc,icon,today,notify,subBack:null,container:()=>document.getElementById("content"),
+    departmentResume,
     deptName:id=>{if(id==="")return "未分配科室";const d=HR.state.depts.find(d=>String(d.id)===String(id));return d?d.name:"未登记";},
     rememberDept:(person,previous=person,effectiveDate="")=>{
       const entry={
